@@ -4,7 +4,7 @@ mod plan;
 mod progress;
 mod util;
 
-use std::{process::exit, time::Instant};
+use std::{env, path::PathBuf, process::exit, time::Instant};
 
 use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
@@ -73,9 +73,13 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     .filter_map(|x| x.map(|x| x))
     .collect_vec();
 
-    let mut plan = Plan::new(deps.iter().cloned().collect());
+    PROGRESS_BAR.set_message(format!("fetched {} root deps", deps.len()));
+
+    let mut plan = Plan::new(deps.iter().map(|x| (**x).clone()).collect());
     plan.extract();
     plan.cleanup();
+
+    PROGRESS_BAR.set_message(format!("planned {} deps", plan.deps.len()));
 
     Ok(plan)
 }
@@ -114,6 +118,17 @@ async fn install() -> Result<(), color_eyre::Report> {
         plan.flat_deps().len(),
         start.elapsed().as_millis()
     ));
+
+    Ok(())
+}
+
+fn join_paths() -> Result<()> {
+    if let Some(path) = env::var_os("PATH") {
+        let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+        paths.push(PathBuf::from("/home/xyz/bin"));
+        let new_path = env::join_paths(paths)?;
+        env::set_var("PATH", &new_path);
+    }
 
     Ok(())
 }
@@ -157,6 +172,8 @@ async fn main() -> Result<()> {
                 .scripts
                 .get(&name)
                 .wrap_err(format!("Script `{}` is not defined", name))?;
+
+            join_paths()?;
 
             let exit_code = Command::new("sh")
                 .arg("-c")

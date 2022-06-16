@@ -4,6 +4,7 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
@@ -20,12 +21,12 @@ pub struct Package {
     pub name: Option<String>,
     pub bin: Option<Bin>,
     pub dist: Dist,
-    pub dependencies: HashMap<String, PartialRange>,
-    pub optional_dependencies: HashMap<String, PartialRange>,
-    pub dev_dependencies: HashMap<String, PartialRange>,
+    pub dependencies: FxHashMap<String, PartialRange>,
+    pub optional_dependencies: FxHashMap<String, PartialRange>,
+    pub dev_dependencies: FxHashMap<String, PartialRange>,
     pub os: PlatformMap,
     pub cpu: PlatformMap,
-    pub scripts: HashMap<String, String>,
+    pub scripts: FxHashMap<String, String>,
     #[serde(flatten)]
     pub rest: Value,
 }
@@ -50,7 +51,7 @@ impl Package {
 #[serde(untagged)]
 pub enum Bin {
     Single(String),
-    Multi(HashMap<String, String>),
+    Multi(FxHashMap<String, String>),
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default, PartialOrd, Ord)]

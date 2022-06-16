@@ -17,7 +17,7 @@ indexmap = { version = "1.8.2", features = ["serde"] }
 indicatif = "0.16.2"
 itertools = "0.10.3"
 multimap = "0.8.3"
-node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "27f94c51008decafaab5d22eb978338a3b9e8038" }
+node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "845a725abb38b5b9cc9910e29cf2dddc06c606b8" }
 once_cell = "1.12.0"
 reqwest = { version = "0.11.11", features = [
   "json",
@@ -28,6 +28,7 @@ reqwest = { version = "0.11.11", features = [
   "gzip",
   "deflate",
 ], default-features = false }
+rustc-hash = "1.1.0"
 safe-path = "0.1.0"
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = { version = "1.0.81", features = ["preserve_order"] }
@@ -37,6 +38,9 @@ tokio-tar = { git = "https://github.com/baszalmstra/tokio-tar", rev = "2031b7890
 tracing = "0.1.35"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
+
+[profile.dev]
+opt-level = 3
 
 [profile.release]
 strip = true

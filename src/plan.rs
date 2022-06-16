@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     path::PathBuf,
 };
 
@@ -9,6 +9,7 @@ use color_eyre::eyre::Result;
 use futures::{future::try_join_all, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use multimap::MultiMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -28,11 +29,11 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Plan {
-    pub deps: HashSet<ExactDep>,
+    pub deps: BTreeSet<ExactDep>,
 }
 
 impl Plan {
-    pub fn new(deps: HashSet<ExactDep>) -> Self {
+    pub fn new(deps: BTreeSet<ExactDep>) -> Self {
         Self { deps }
     }
 
@@ -53,7 +54,7 @@ impl Plan {
     }
 
     pub fn cleanup(&mut self) {
-        let rootable: HashSet<_> = self.rootable().into_iter().map(|x| x.name).collect();
+        let rootable: FxHashSet<_> = self.rootable().into_iter().map(|x| x.name).collect();
         let mut deps = self.deps.iter().cloned().collect_vec();
         for dep in deps.iter_mut() {
             dep.remove_deps(&rootable);
@@ -61,12 +62,12 @@ impl Plan {
         self.deps = deps.into_iter().collect();
     }
 
-    pub fn flat_deps(&self) -> HashSet<ExactDep> {
+    pub fn flat_deps(&self) -> BTreeSet<ExactDep> {
         flatten_deps(self.deps.iter())
     }
 
     pub fn satisfies(&self, package: &Package) -> bool {
-        let map: HashMap<_, _> = self
+        let map: FxHashMap<_, _> = self
             .deps
             .iter()
             .map(|x| (x.name.to_string(), x.version.clone()))
@@ -139,7 +140,9 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
             file.path()?.components().skip(1).collect::<PathBuf>(),
         )?;
         create_dir_all(&target_file.parent().unwrap()).await?;
-        file.unpack(&target_file).await?;
+        if let Err(e) = file.unpack(&target_file).await {
+            PROGRESS_BAR.println(format!("Warning: ({}) {}", dep.id(), e));
+        }
     }
 
     if prefix.len() == 0 {

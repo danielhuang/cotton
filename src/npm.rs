@@ -23,6 +23,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::Debug;
 use tokio::sync::Semaphore;
 
@@ -37,7 +38,7 @@ use crate::{
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct RegistryResponse {
     #[serde(rename = "dist-tags")]
-    pub dist_tags: HashMap<String, String>,
+    pub dist_tags: FxHashMap<String, String>,
     pub versions: IndexMap<Version, Package>,
 }
 
@@ -72,7 +73,7 @@ impl PlatformMap {
 #[tracing::instrument]
 pub async fn fetch_package(name: &str) -> Result<RegistryResponse, reqwest::Error> {
     Ok(CLIENT2
-        .get(format!("https://registry.yarnpkg.com/{}", name))
+        .get(format!("https://registry.npmjs.org/{}", name))
         .send()
         .await?
         .json()
@@ -80,32 +81,8 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse, reqwest::Erro
 }
 
 #[tracing::instrument]
-async fn fetch_package_cached(name: String) -> Result<RegistryResponse> {
-    static CACHE: Lazy<
-        LoadingCache<
-            String,
-            RegistryResponse,
-            String,
-            HashMapBacking<String, CacheEntry<RegistryResponse, String>>,
-        >,
-    > = Lazy::new(|| {
-        LoadingCache::new(move |key: String| async move {
-            fetch_package(&key).await.map_err(|e| e.to_string())
-        })
-    });
-
-    Ok(CACHE
-        .get(name.to_string())
-        .await
-        .map_err(|e| Report::msg(e.into_loading_error().unwrap().to_string()))?)
-}
-
-#[tracing::instrument]
 #[cached(result)]
 async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(512));
-    let _permit = S.acquire().await.unwrap();
-
     let res = fetch_package(&d.name).await?;
     let (version, package) = res
         .versions
@@ -113,8 +90,6 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
         .sorted_by_key(|(v, _)| !v.is_prerelease())
         .rfind(|(v, _)| d.version.satisfies(v))
         .wrap_err("Version cannot be satisfied")?;
-
-    PROGRESS_BAR.set_message(format!("fetched {}", d.name));
 
     Ok((version.clone(), package.clone()))
 }
@@ -124,20 +99,21 @@ pub struct ExactDep {
     pub name: String,
     pub version: Version,
     pub dist: Dist,
-    pub deps: BTreeSet<ExactDep>,
+    pub deps: BTreeSet<Arc<ExactDep>>,
     pub bins: BTreeMap<String, String>,
 }
 
 impl ExactDep {
-    pub fn remove_deps(&mut self, filter: &HashSet<String>) {
+    pub fn remove_deps(&mut self, filter: &FxHashSet<String>) {
         self.deps = self
             .deps
             .iter()
             .cloned()
             .filter(|dep| !filter.contains(&dep.name))
-            .map(|mut dep| {
+            .map(|dep| {
+                let mut dep = (*dep).clone();
                 dep.remove_deps(filter);
-                dep
+                Arc::new(dep)
             })
             .collect();
     }
@@ -165,9 +141,8 @@ impl Debug for ExactDep {
     }
 }
 
-#[tracing::instrument]
 #[async_recursion]
-pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option<ExactDep>> {
+pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option<Arc<ExactDep>>> {
     if stack
         .iter()
         .any(|(d2, v)| d.name == d2.name && d.version.satisfies(v))
@@ -175,7 +150,12 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
         return Ok(None);
     }
 
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
+    let permit = S.acquire().await.unwrap();
+
     let (version, package) = fetch_dep_single(d.clone()).await?;
+
+    drop(permit);
 
     if !package.os.is_supported(get_node_os()) || !package.cpu.is_supported(get_node_cpu()) {
         if d.optional {
@@ -188,9 +168,9 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
     let deps = try_join_all(package.iter().map(|d2| {
         let version = version.clone();
         async move {
-            fetch_dep(
-                &d2,
-                &stack
+            fetch_dep_cached(
+                d2,
+                stack
                     .iter()
                     .cloned()
                     .chain([(d.clone(), version)])
@@ -203,29 +183,57 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
     .into_iter()
     .filter_map(|x| x);
 
-    Ok(Some(ExactDep {
+    PROGRESS_BAR.set_message(format!("fetched {}", d.name));
+
+    Ok(Some(Arc::new(ExactDep {
         name: d.name.to_string(),
         version: version.to_owned(),
         deps: deps.into_iter().collect(),
         dist: package.dist.clone(),
         bins: package.bins().clone(),
-    }))
+    })))
 }
 
-pub fn flatten_dep(dep: &ExactDep) -> HashSet<ExactDep> {
-    fn flatten(dep: &ExactDep, set: &mut HashSet<ExactDep>) {
-        if set.insert(dep.clone()) {
-            for dep in &dep.deps {
-                flatten(dep, set)
-            }
+pub async fn fetch_dep_cached(
+    d: DepReq,
+    stack: Vec<(DepReq, Version)>,
+) -> Result<Option<Arc<ExactDep>>> {
+    static CACHE: Lazy<
+        LoadingCache<
+            (DepReq, Vec<(DepReq, Version)>),
+            Option<Arc<ExactDep>>,
+            String,
+            HashMapBacking<
+                (DepReq, Vec<(DepReq, Version)>),
+                CacheEntry<Option<Arc<ExactDep>>, String>,
+            >,
+        >,
+    > = Lazy::new(|| {
+        LoadingCache::new(
+            move |(d, stack): (DepReq, Vec<(DepReq, Version)>)| async move {
+                fetch_dep(&d, &stack).await.map_err(|e| e.to_string())
+            },
+        )
+    });
+
+    Ok(CACHE
+        .get((d, stack))
+        .await
+        .map_err(|e| Report::msg(e.into_loading_error().unwrap().to_string()))?)
+}
+
+fn flatten_dep(dep: &ExactDep, set: &mut BTreeSet<ExactDep>) {
+    if set.insert(dep.clone()) {
+        for dep in &dep.deps {
+            flatten_dep(dep, set)
         }
     }
-
-    let mut set = HashSet::new();
-    flatten(dep, &mut set);
-    set
 }
 
-pub fn flatten_deps<'a>(deps: impl Iterator<Item = &'a ExactDep>) -> HashSet<ExactDep> {
-    deps.flat_map(flatten_dep).collect()
+pub fn flatten_deps<'a>(deps: impl Iterator<Item = &'a ExactDep>) -> BTreeSet<ExactDep> {
+    let mut set = BTreeSet::default();
+    for dep in deps {
+        flatten_dep(dep, &mut set);
+    }
+    set
 }

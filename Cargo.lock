@@ -322,6 +322,7 @@ dependencies = [
  "node-semver",
  "once_cell",
  "reqwest",
+ "rustc-hash",
  "safe-path",
  "serde",
  "serde_json",
@@ -926,7 +927,7 @@ dependencies = [
 [[package]]
 name = "node-semver"
 version = "2.0.1-alpha.0"
-source = "git+https://github.com/danielhuang/node-semver-rs?rev=27f94c51008decafaab5d22eb978338a3b9e8038#27f94c51008decafaab5d22eb978338a3b9e8038"
+source = "git+https://github.com/danielhuang/node-semver-rs?rev=845a725abb38b5b9cc9910e29cf2dddc06c606b8#845a725abb38b5b9cc9910e29cf2dddc06c606b8"
 dependencies = [
  "bytecount",
  "miette",
@@ -1218,6 +1219,12 @@ name = "rustc-demangle"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ef03e0a2b150c7a90d01faf6254c9c48a41e95fb2a8c2ac1c6f0d2b9aefc342"
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustls"
