@@ -124,7 +124,7 @@ async fn install() -> Result<(), color_eyre::Report> {
 fn join_paths() -> Result<()> {
     if let Some(path) = env::var_os("PATH") {
         let mut paths = env::split_paths(&path).collect::<Vec<_>>();
-        paths.push(PathBuf::from("/home/xyz/bin"));
+        paths.push(PathBuf::from("node_modules/.bin"));
         let new_path = env::join_paths(paths)?;
         env::set_var("PATH", &new_path);
     }
