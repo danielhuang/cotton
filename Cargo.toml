@@ -1,0 +1,43 @@
+[package]
+name = "cotton"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-compression = { version = "0.3.14", features = ["tokio", "gzip"] }
+async-recursion = "1.0.0"
+cache_loader_async = "0.2.0"
+cached = "0.34.1"
+clap = { version = "3.2.1", features = ["derive"] }
+color-eyre = "0.6.1"
+futures = "0.3.21"
+indexmap = { version = "1.8.2", features = ["serde"] }
+indicatif = "0.16.2"
+itertools = "0.10.3"
+multimap = "0.8.3"
+node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "27f94c51008decafaab5d22eb978338a3b9e8038" }
+once_cell = "1.12.0"
+reqwest = { version = "0.11.11", features = [
+  "json",
+  "stream",
+  "rustls-tls",
+  "trust-dns",
+  "brotli",
+  "gzip",
+  "deflate",
+], default-features = false }
+safe-path = "0.1.0"
+serde = { version = "1.0.137", features = ["derive", "rc"] }
+serde_json = { version = "1.0.81", features = ["preserve_order"] }
+serde_path_to_error = "0.1.7"
+tokio = { version = "1.19.2", features = ["full"] }
+tokio-tar = { git = "https://github.com/baszalmstra/tokio-tar", rev = "2031b7890d343f621abd07bd73ee1467df37449f" }
+tracing = "0.1.35"
+tracing-error = "0.2.0"
+tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
+
+[profile.release]
+strip = true
+lto = "thin"
