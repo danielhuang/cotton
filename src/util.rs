@@ -1,13 +1,12 @@
 use std::{
     env::consts::{ARCH, OS},
-    fmt::{Display, Pointer},
+    fmt::Display,
 };
 
-use color_eyre::eyre::Result;
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 pub static CLIENT2: Lazy<Client> = Lazy::new(|| {
@@ -19,12 +18,6 @@ pub static CLIENT2: Lazy<Client> = Lazy::new(|| {
         .build()
         .unwrap()
 });
-
-pub fn decode_json<T: DeserializeOwned>(x: &[u8]) -> Result<T> {
-    let jd = &mut serde_json::Deserializer::from_slice(x);
-
-    Ok(serde_path_to_error::deserialize(jd)?)
-}
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 #[serde(untagged)]

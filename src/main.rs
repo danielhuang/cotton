@@ -8,9 +8,9 @@ use std::{env, path::PathBuf, process::exit, time::Instant};
 
 use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
-use futures::{future::try_join_all, FutureExt};
+use futures::future::try_join_all;
 use itertools::Itertools;
-use node_semver::Range;
+
 use npm::fetch_package;
 use package::{read_package, read_package_as_value, save_package, Package};
 use serde_json::Value;
@@ -21,10 +21,9 @@ use tokio::{
 };
 
 use crate::{
-    npm::{fetch_dep, flatten_deps},
+    npm::fetch_dep,
     plan::{execute_plan, Plan},
     progress::PROGRESS_BAR,
-    util::CLIENT,
 };
 
 /// Simple program to greet a person
@@ -70,7 +69,7 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     )
     .await?
     .into_iter()
-    .filter_map(|x| x.map(|x| x))
+    .flatten()
     .collect_vec();
 
     PROGRESS_BAR.set_message(format!("fetched {} root deps", deps.len()));

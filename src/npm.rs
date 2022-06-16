@@ -1,6 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    pin::Pin,
+    collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
 
@@ -15,13 +14,10 @@ use color_eyre::{
     eyre::{ContextCompat, Result},
     Report,
 };
-use futures::{
-    future::{try_join_all, Shared},
-    Future, FutureExt,
-};
+use futures::future::try_join_all;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use node_semver::{Range, Version};
+use node_semver::Version;
 use once_cell::sync::Lazy;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::Debug;
@@ -32,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     package::{DepReq, Dist, Package},
     progress::PROGRESS_BAR,
-    util::{decode_json, get_node_cpu, get_node_os, PartialRange, CLIENT, CLIENT2},
+    util::{get_node_cpu, get_node_os, CLIENT2},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -72,12 +68,12 @@ impl PlatformMap {
 
 #[tracing::instrument]
 pub async fn fetch_package(name: &str) -> Result<RegistryResponse, reqwest::Error> {
-    Ok(CLIENT2
+    CLIENT2
         .get(format!("https://registry.npmjs.org/{}", name))
         .send()
         .await?
         .json()
-        .await?)
+        .await
 }
 
 #[tracing::instrument]
@@ -181,7 +177,7 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
     }))
     .await?
     .into_iter()
-    .filter_map(|x| x);
+    .flatten();
 
     PROGRESS_BAR.set_message(format!("fetched {}", d.name));
 
@@ -190,7 +186,7 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
         version: version.to_owned(),
         deps: deps.into_iter().collect(),
         dist: package.dist.clone(),
-        bins: package.bins().clone(),
+        bins: package.bins(),
     })))
 }
 
@@ -216,10 +212,10 @@ pub async fn fetch_dep_cached(
         )
     });
 
-    Ok(CACHE
+    CACHE
         .get((d, stack))
         .await
-        .map_err(|e| Report::msg(e.into_loading_error().unwrap().to_string()))?)
+        .map_err(|e| Report::msg(e.into_loading_error().unwrap()))
 }
 
 fn flatten_dep(dep: &ExactDep, set: &mut BTreeSet<ExactDep>) {

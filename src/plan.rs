@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeSet, HashMap, HashSet},
-    path::PathBuf,
-};
+use std::{collections::BTreeSet, path::PathBuf};
 
 use async_compression::tokio::write::GzipDecoder;
 use async_recursion::async_recursion;
@@ -13,10 +10,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use tokio::{
-    fs::{
-        create_dir_all, metadata, remove_dir_all, remove_file, rename, symlink, File, OpenOptions,
-    },
-    io::{copy, AsyncSeekExt, AsyncWriteExt},
+    fs::{create_dir_all, metadata, remove_dir_all, remove_file, rename, symlink, File},
+    io::AsyncWriteExt,
 };
 use tokio_tar::Archive;
 
@@ -48,7 +43,7 @@ impl Plan {
 
     pub fn extract(&mut self) {
         let rootable = self.rootable();
-        for r in rootable.clone() {
+        for r in rootable {
             self.deps.insert(r.clone());
         }
     }
@@ -145,7 +140,7 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
         }
     }
 
-    if prefix.len() == 0 {
+    if prefix.is_empty() {
         for (cmd, path) in &dep.bins {
             let path = path.to_string();
             let mut path = PathBuf::from("../").join(&dep.name).join(path);
