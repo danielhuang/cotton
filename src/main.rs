@@ -4,12 +4,12 @@ mod plan;
 mod progress;
 mod util;
 
-use std::{env, path::PathBuf, process::exit, time::Instant};
-
 use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
+use color_eyre::owo_colors::OwoColorize;
 use futures::future::try_join_all;
 use itertools::Itertools;
+use std::{env, path::PathBuf, process::exit, time::Instant};
 
 use npm::fetch_package;
 use package::{read_package, read_package_as_value, save_package, Package};
@@ -72,13 +72,13 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     .flatten()
     .collect_vec();
 
-    PROGRESS_BAR.set_message(format!("fetched {} root deps", deps.len()));
+    PROGRESS_BAR.set_message(format!("fetched {} root deps", deps.len().yellow()));
 
     let mut plan = Plan::new(deps.iter().map(|x| (**x).clone()).collect());
     plan.extract();
     plan.cleanup();
 
-    PROGRESS_BAR.set_message(format!("planned {} deps", plan.deps.len()));
+    PROGRESS_BAR.set_message(format!("planned {} deps", plan.deps.len().yellow()));
 
     Ok(plan)
 }
@@ -114,8 +114,8 @@ async fn install() -> Result<(), color_eyre::Report> {
 
     PROGRESS_BAR.println(format!(
         "Installed {} packages in {}ms",
-        plan.flat_deps().len(),
-        start.elapsed().as_millis()
+        plan.flat_deps().len().yellow(),
+        start.elapsed().as_millis().yellow()
     ));
 
     Ok(())

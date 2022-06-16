@@ -19,6 +19,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use node_semver::Version;
 use once_cell::sync::Lazy;
+use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::Debug;
 use tokio::sync::Semaphore;
@@ -179,7 +180,7 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
     .into_iter()
     .flatten();
 
-    PROGRESS_BAR.set_message(format!("fetched {}", d.name));
+    PROGRESS_BAR.set_message(format!("fetched {}", d.name.bright_blue()));
 
     Ok(Some(Arc::new(ExactDep {
         name: d.name.to_string(),

@@ -6,6 +6,7 @@ use color_eyre::eyre::Result;
 use futures::{future::try_join_all, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use multimap::MultiMap;
+use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
@@ -103,7 +104,7 @@ pub async fn download_package(dep: &ExactDep) -> Result<()> {
 
     rename(&target_part_path, &target_path).await?;
 
-    PROGRESS_BAR.set_message(format!("downloaded {}", dep.id()));
+    PROGRESS_BAR.set_message(format!("downloaded {}", dep.id().bright_blue()));
 
     Ok(())
 }
@@ -136,7 +137,12 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
         )?;
         create_dir_all(&target_file.parent().unwrap()).await?;
         if let Err(e) = file.unpack(&target_file).await {
-            PROGRESS_BAR.println(format!("Warning: ({}) {}", dep.id(), e));
+            PROGRESS_BAR.println(format!(
+                "{} ({}) {}",
+                "Warning:".on_yellow(),
+                dep.id().bright_blue(),
+                e
+            ));
         }
     }
 
@@ -157,7 +163,7 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
         }
     }
 
-    PROGRESS_BAR.set_message(format!("extracted {}", dep.id()));
+    PROGRESS_BAR.set_message(format!("extracted {}", dep.id().bright_blue()));
 
     Ok(())
 }
