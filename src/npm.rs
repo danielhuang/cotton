@@ -191,6 +191,7 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
     })))
 }
 
+#[tracing::instrument]
 pub async fn fetch_dep_cached(
     d: DepReq,
     stack: Vec<(DepReq, Version)>,
@@ -208,7 +209,7 @@ pub async fn fetch_dep_cached(
     CACHE
         .get((d, stack))
         .await
-        .map_err(|e| Report::msg(e.into_loading_error().unwrap()))
+        .map_err(|e| Report::msg(e.to_string()))
 }
 
 fn flatten_dep(dep: &ExactDep, set: &mut BTreeSet<ExactDep>) {
