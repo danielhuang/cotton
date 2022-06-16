@@ -321,6 +321,7 @@ dependencies = [
  "multimap",
  "node-semver",
  "once_cell",
+ "owo-colors",
  "reqwest",
  "rustc-hash",
  "safe-path",

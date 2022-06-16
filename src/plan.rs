@@ -172,11 +172,14 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
 pub async fn extract_dep(prefix: &[&str], dep: &ExactDep) -> Result<()> {
     extract_package(prefix, dep).await?;
 
-    for inner_dep in &dep.deps {
+    try_join_all(dep.deps.iter().map(|inner_dep| async {
         let mut prefix = prefix.to_vec();
         prefix.push(&dep.name);
         extract_dep(&prefix, inner_dep).await?;
-    }
+
+        Ok(()) as Result<_>
+    }))
+    .await?;
 
     Ok(())
 }
