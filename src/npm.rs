@@ -194,22 +194,14 @@ pub async fn fetch_dep_cached(
     d: DepReq,
     stack: Vec<(DepReq, Version)>,
 ) -> Result<Option<Arc<ExactDep>>> {
-    static CACHE: Lazy<
-        LoadingCache<
-            (DepReq, Vec<(DepReq, Version)>),
-            Option<Arc<ExactDep>>,
-            String,
-            HashMapBacking<
-                (DepReq, Vec<(DepReq, Version)>),
-                CacheEntry<Option<Arc<ExactDep>>, String>,
-            >,
-        >,
-    > = Lazy::new(|| {
-        LoadingCache::new(
-            move |(d, stack): (DepReq, Vec<(DepReq, Version)>)| async move {
-                fetch_dep(&d, &stack).await.map_err(|e| e.to_string())
-            },
-        )
+    type Args = (DepReq, Vec<(DepReq, Version)>);
+    type Output = Option<Arc<ExactDep>>;
+    type Cache<I, T, E> = LoadingCache<I, T, E, HashMapBacking<I, CacheEntry<T, E>>>;
+
+    static CACHE: Lazy<Cache<Args, Output, String>> = Lazy::new(|| {
+        LoadingCache::new(move |(d, stack): Args| async move {
+            fetch_dep(&d, &stack).await.map_err(|e| e.to_string())
+        })
     });
 
     CACHE
