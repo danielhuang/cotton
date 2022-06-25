@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{collections::BTreeMap, fmt::Debug, path::Path};
 
 use color_eyre::eyre::Result;
 use rustc_hash::FxHashMap;
@@ -113,9 +113,13 @@ pub async fn read_package_as_value() -> Result<Value> {
 }
 
 pub async fn save_package(package: &Value) -> Result<()> {
-    File::create("package.json")
+    write_json("package.json", package).await
+}
+
+pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result<()> {
+    File::create(path)
         .await?
-        .write_all(serde_json::to_string_pretty(package)?.as_bytes())
+        .write_all(serde_json::to_string_pretty(&data)?.as_bytes())
         .await?;
 
     Ok(())

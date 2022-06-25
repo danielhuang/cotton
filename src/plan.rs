@@ -23,7 +23,7 @@ use crate::{
     util::{PartialRange, CLIENT},
 };
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Plan {
     pub deps: BTreeSet<ExactDep>,
 }

@@ -9,10 +9,11 @@ use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use futures::future::try_join_all;
 use itertools::Itertools;
+use std::path::Path;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 
 use npm::fetch_package;
-use package::{read_package, read_package_as_value, save_package, Package};
+use package::{read_package, read_package_as_value, save_package, write_json, Package};
 use serde_json::Value;
 use tokio::{
     fs::{read_to_string, File},
@@ -83,34 +84,47 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     Ok(plan)
 }
 
-pub async fn is_install_completed(package: &Package) -> bool {
-    if let Ok(plan) = read_to_string("node_modules/.cotton/plan.json").await {
-        if let Ok(plan) = serde_json::from_str::<Plan>(&plan) {
-            if plan.satisfies(package) {
-                return true;
-            }
-        }
+async fn read_plan(path: &str) -> Result<Plan> {
+    let plan = read_to_string(path).await?;
+    Ok(serde_json::from_str(&plan)?)
+}
+
+pub async fn verify_installation(package: &Package) -> Result<bool> {
+    let installed = read_plan("node_modules/.cotton/plan.json").await?;
+    let lock_file = read_plan("cotton.lock").await?;
+
+    if installed != lock_file {
+        return Ok(false);
     }
-    false
+
+    Ok(installed.satisfies(package))
 }
 
 async fn install() -> Result<(), color_eyre::Report> {
     let package = read_package().await?;
 
-    if is_install_completed(&package).await {
+    if let Ok(true) = verify_installation(&package).await {
         return Ok(());
     }
 
     let start = Instant::now();
 
-    let plan = prepare_plan(&package).await?;
+    let plan = {
+        if let Ok(lock_file) = read_plan("cotton.lock").await {
+            if lock_file.satisfies(&package) {
+                lock_file
+            } else {
+                prepare_plan(&package).await?
+            }
+        } else {
+            prepare_plan(&package).await?
+        }
+    };
 
     execute_plan(&plan).await?;
 
-    File::create("node_modules/.cotton/plan.json")
-        .await?
-        .write_all(serde_json::to_string(&plan)?.as_bytes())
-        .await?;
+    write_json("node_modules/.cotton/plan.json", &plan).await?;
+    write_json("cotton.lock", &plan).await?;
 
     PROGRESS_BAR.println(format!(
         "Installed {} packages in {}ms",
