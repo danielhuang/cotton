@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
+      - uses: Swatinem/rust-cache@v1
       - name: Compile
         id: compile
         uses: rust-build/rust-build.action@v1.3.2
