@@ -118,6 +118,8 @@ async fn install() -> Result<(), color_eyre::Report> {
         start.elapsed().as_millis().yellow()
     ));
 
+    PROGRESS_BAR.finish_and_clear();
+
     Ok(())
 }
 
