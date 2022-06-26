@@ -9,17 +9,11 @@ use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use futures::future::try_join_all;
 use itertools::Itertools;
-use std::path::Path;
-use std::{env, path::PathBuf, process::exit, time::Instant};
-
 use npm::fetch_package;
 use package::{read_package, read_package_as_value, save_package, write_json, Package};
 use serde_json::Value;
-use tokio::{
-    fs::{read_to_string, File},
-    io::AsyncWriteExt,
-    process::Command,
-};
+use std::{env, path::PathBuf, process::exit, time::Instant};
+use tokio::{fs::read_to_string, process::Command};
 
 use crate::{
     npm::fetch_dep,
