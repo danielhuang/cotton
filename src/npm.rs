@@ -101,12 +101,12 @@ pub struct ExactDep {
 }
 
 impl ExactDep {
-    pub fn remove_deps(&mut self, filter: &FxHashSet<String>) {
+    pub fn remove_deps(&mut self, filter: &FxHashSet<SingleDep>) {
         self.deps = self
             .deps
             .iter()
             .cloned()
-            .filter(|dep| !filter.contains(&dep.name))
+            .filter(|dep| !filter.contains(&dep.as_single()))
             .map(|dep| {
                 let mut dep = (*dep).clone();
                 dep.remove_deps(filter);
@@ -126,6 +126,13 @@ impl ExactDep {
     pub fn tar_part(&self) -> String {
         format!("{}.tar.part", self.id())
     }
+
+    pub fn as_single(&self) -> SingleDep {
+        SingleDep {
+            name: self.name.to_string(),
+            version: self.version.clone(),
+        }
+    }
 }
 
 impl Debug for ExactDep {
@@ -136,6 +143,12 @@ impl Debug for ExactDep {
             .field("deps", &self.deps)
             .finish()
     }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SingleDep {
+    name: String,
+    version: Version,
 }
 
 #[async_recursion]

@@ -6,6 +6,7 @@ use color_eyre::eyre::Result;
 use futures::{future::try_join_all, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use multimap::MultiMap;
+use node_semver::Version;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use safe_path::scoped_join;
@@ -37,8 +38,14 @@ impl Plan {
         let flat = flatten_deps(self.deps.iter());
         let map: MultiMap<_, _> = flat.into_iter().map(|x| (x.name.to_string(), x)).collect();
         map.keys()
-            .filter(|&x| map.get_vec(x).unwrap().len() == 1)
-            .map(|x| map[x].clone())
+            .map(|x| {
+                map.get_vec(x)
+                    .unwrap()
+                    .iter()
+                    .max_by_key(|x| &x.version)
+                    .unwrap()
+            })
+            .cloned()
             .collect()
     }
 
@@ -50,7 +57,7 @@ impl Plan {
     }
 
     pub fn cleanup(&mut self) {
-        let rootable: FxHashSet<_> = self.rootable().into_iter().map(|x| x.name).collect();
+        let rootable: FxHashSet<_> = self.rootable().into_iter().map(|x| x.as_single()).collect();
         let mut deps = self.deps.iter().cloned().collect_vec();
         for dep in deps.iter_mut() {
             dep.remove_deps(&rootable);
