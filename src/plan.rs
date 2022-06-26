@@ -6,7 +6,6 @@ use color_eyre::eyre::Result;
 use futures::{future::try_join_all, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use multimap::MultiMap;
-use node_semver::Version;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use safe_path::scoped_join;

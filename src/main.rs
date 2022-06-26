@@ -1,3 +1,4 @@
+mod cache;
 mod npm;
 mod package;
 mod plan;

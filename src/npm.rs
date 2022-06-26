@@ -4,7 +4,6 @@ use std::{
 };
 
 use async_recursion::async_recursion;
-
 use cache_loader_async::{
     backing::HashMapBacking,
     cache_api::{CacheEntry, LoadingCache},
@@ -21,12 +20,12 @@ use node_semver::Version;
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use tokio::sync::Semaphore;
 
-use serde::{Deserialize, Serialize};
-
 use crate::{
+    cache::Cache,
     package::{DepReq, Dist, Package},
     progress::PROGRESS_BAR,
     util::{get_node_cpu, get_node_os, CLIENT2},
@@ -77,10 +76,23 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse, reqwest::Erro
         .await
 }
 
+pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
+    static CACHE: Lazy<Cache<String, Result<Arc<RegistryResponse>, String>>> = Lazy::new(|| {
+        Cache::new(|key: String| async move {
+            fetch_package(&key)
+                .await
+                .map(Arc::new)
+                .map_err(|e| e.to_string())
+        })
+    });
+
+    CACHE.get(name.to_string()).await.map_err(Report::msg)
+}
+
 #[tracing::instrument]
 #[cached(result)]
 async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
-    let res = fetch_package(&d.name).await?;
+    let res = fetch_package_cached(&d.name).await?;
     let (version, package) = res
         .versions
         .iter()
