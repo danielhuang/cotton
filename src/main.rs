@@ -14,6 +14,7 @@ use npm::fetch_package;
 use package::{read_package, read_package_as_value, save_package, write_json, Package};
 use serde_json::Value;
 use std::{env, path::PathBuf, process::exit, time::Instant};
+use tikv_jemallocator::Jemalloc;
 use tokio::{fs::read_to_string, process::Command};
 
 use crate::{
@@ -21,6 +22,9 @@ use crate::{
     plan::{execute_plan, Plan},
     progress::PROGRESS_BAR,
 };
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
