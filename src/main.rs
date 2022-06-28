@@ -16,6 +16,7 @@ use package::{read_package, read_package_as_value, save_package, write_json, Pac
 use serde_json::Value;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tikv_jemallocator::Jemalloc;
+use tokio::fs::create_dir_all;
 use tokio::{fs::read_to_string, process::Command};
 
 use crate::{
@@ -110,6 +111,8 @@ async fn install() -> Result<(), color_eyre::Report> {
 
     let start = Instant::now();
 
+    init_storage().await?;
+
     let plan = {
         if let Ok(lock_file) = read_plan("cotton.lock").await {
             if lock_file.satisfies(&package) {
@@ -149,6 +152,13 @@ fn join_paths() -> Result<()> {
     Ok(())
 }
 
+pub async fn init_storage() -> Result<()> {
+    create_dir_all("node_modules/.cotton/tar").await?;
+    create_dir_all("node_modules/.bin").await?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     install_tracing();
@@ -162,6 +172,9 @@ async fn main() -> Result<()> {
         }
         Subcommand::Update => {
             let package = read_package().await?;
+
+            init_storage().await?;
+
             let start = Instant::now();
 
             let plan = prepare_plan(&package).await?;

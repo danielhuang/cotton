@@ -24,6 +24,7 @@ use tokio::sync::Semaphore;
 use crate::{
     cache::Cache,
     package::{DepReq, Dist, Package},
+    plan::download_package_shared,
     progress::PROGRESS_BAR,
     util::{get_node_cpu, get_node_os, CLIENT2},
 };
@@ -108,21 +109,21 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
-pub struct ExactDep {
+pub struct DependencyTree {
     pub name: CompactString,
     pub version: Version,
     pub dist: Dist,
-    pub deps: BTreeSet<Arc<ExactDep>>,
+    pub deps: BTreeSet<Arc<DependencyTree>>,
     pub bins: BTreeMap<CompactString, CompactString>,
 }
 
-impl ExactDep {
-    pub fn remove_deps(&mut self, filter: &FxHashSet<SingleDep>) {
+impl DependencyTree {
+    pub fn remove_deps(&mut self, filter: &FxHashSet<Dependency>) {
         self.deps = self
             .deps
             .iter()
             .cloned()
-            .filter(|dep| !filter.contains(&dep.as_single()))
+            .filter(|dep| !filter.contains(&dep.root()))
             .map(|dep| {
                 let mut dep = (*dep).clone();
                 dep.remove_deps(filter);
@@ -131,6 +132,35 @@ impl ExactDep {
             .collect();
     }
 
+    pub fn root(&self) -> Dependency {
+        Dependency {
+            name: self.name.clone(),
+            version: self.version.clone(),
+            dist: self.dist.clone(),
+            bins: self.bins.clone(),
+        }
+    }
+}
+
+impl Debug for DependencyTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExactDep")
+            .field("name", &self.name)
+            .field("version", &self.version)
+            .field("deps", &self.deps)
+            .finish()
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+pub struct Dependency {
+    pub name: CompactString,
+    pub version: Version,
+    pub dist: Dist,
+    pub bins: BTreeMap<CompactString, CompactString>,
+}
+
+impl Dependency {
     pub fn id(&self) -> String {
         format!("{}@{}", self.name, self.version)
     }
@@ -142,33 +172,13 @@ impl ExactDep {
     pub fn tar_part(&self) -> String {
         format!("{}.tar.part", self.id())
     }
-
-    pub fn as_single(&self) -> SingleDep {
-        SingleDep {
-            name: self.name.to_compact_string(),
-            version: self.version.clone(),
-        }
-    }
-}
-
-impl Debug for ExactDep {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ExactDep")
-            .field("name", &self.name)
-            .field("version", &self.version)
-            .field("deps", &self.deps)
-            .finish()
-    }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SingleDep {
-    name: CompactString,
-    version: Version,
 }
 
 #[async_recursion]
-pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option<Arc<ExactDep>>> {
+pub async fn fetch_dep(
+    d: &DepReq,
+    stack: &[(DepReq, Version)],
+) -> Result<Option<Arc<DependencyTree>>> {
     if stack
         .iter()
         .any(|(d2, v)| d.name == d2.name && d.version.satisfies(v))
@@ -206,21 +216,25 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
 
     PROGRESS_BAR.set_message(format!("fetched {}", d.name.bright_blue()));
 
-    Ok(Some(Arc::new(ExactDep {
+    let tree = DependencyTree {
         name: d.name.to_compact_string(),
         version: version.to_owned(),
         deps: deps.into_iter().collect(),
         dist: package.dist.clone(),
         bins: package.bins(),
-    })))
+    };
+
+    tokio::spawn(download_package_shared(tree.root()));
+
+    Ok(Some(Arc::new(tree)))
 }
 
 pub async fn fetch_dep_cached(
     d: DepReq,
     stack: Vec<(DepReq, Version)>,
-) -> Result<Option<Arc<ExactDep>>> {
+) -> Result<Option<Arc<DependencyTree>>> {
     type Args = (DepReq, Vec<(DepReq, Version)>);
-    type Output = Option<Arc<ExactDep>>;
+    type Output = Option<Arc<DependencyTree>>;
 
     static CACHE: Lazy<Cache<Args, Result<Output, CompactString>>> = Lazy::new(|| {
         Cache::new(|(d, stack): Args| async move {
@@ -236,7 +250,7 @@ pub async fn fetch_dep_cached(
         .map_err(|e| Report::msg(e.to_compact_string()))
 }
 
-fn flatten_dep(dep: &ExactDep, set: &mut BTreeSet<ExactDep>) {
+fn flatten_dep(dep: &DependencyTree, set: &mut BTreeSet<DependencyTree>) {
     if set.insert(dep.clone()) {
         for dep in &dep.deps {
             flatten_dep(dep, set)
@@ -244,7 +258,9 @@ fn flatten_dep(dep: &ExactDep, set: &mut BTreeSet<ExactDep>) {
     }
 }
 
-pub fn flatten_deps<'a>(deps: impl Iterator<Item = &'a ExactDep>) -> BTreeSet<ExactDep> {
+pub fn flatten_deps<'a>(
+    deps: impl Iterator<Item = &'a DependencyTree>,
+) -> BTreeSet<DependencyTree> {
     let mut set = BTreeSet::default();
     for dep in deps {
         flatten_dep(dep, &mut set);

@@ -55,10 +55,8 @@ pub enum Bin {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default, PartialOrd, Ord)]
-#[serde(rename_all = "camelCase")]
 pub struct Dist {
     pub tarball: CompactString,
-    pub unpacked_size: Option<u64>,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]

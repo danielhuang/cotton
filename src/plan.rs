@@ -2,11 +2,12 @@ use std::{collections::BTreeSet, path::PathBuf};
 
 use async_compression::tokio::write::GzipDecoder;
 use async_recursion::async_recursion;
-use color_eyre::eyre::Result;
-use compact_str::ToCompactString;
-use futures::{future::try_join_all, StreamExt, TryStreamExt};
+use color_eyre::{eyre::Result, Report};
+use compact_str::{CompactString, ToCompactString};
+use futures::{future::try_join_all, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::Itertools;
 use multimap::MultiMap;
+use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use safe_path::scoped_join;
@@ -18,7 +19,8 @@ use tokio::{
 use tokio_tar::Archive;
 
 use crate::{
-    npm::{flatten_deps, ExactDep},
+    cache::Cache,
+    npm::{flatten_deps, Dependency, DependencyTree},
     package::Package,
     progress::PROGRESS_BAR,
     util::{PartialRange, CLIENT},
@@ -26,15 +28,15 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Plan {
-    pub deps: BTreeSet<ExactDep>,
+    pub deps: BTreeSet<DependencyTree>,
 }
 
 impl Plan {
-    pub fn new(deps: BTreeSet<ExactDep>) -> Self {
+    pub fn new(deps: BTreeSet<DependencyTree>) -> Self {
         Self { deps }
     }
 
-    pub fn rootable(&self) -> Vec<ExactDep> {
+    pub fn rootable(&self) -> Vec<DependencyTree> {
         let flat = flatten_deps(self.deps.iter());
         let map: MultiMap<_, _> = flat
             .into_iter()
@@ -60,7 +62,7 @@ impl Plan {
     }
 
     pub fn cleanup(&mut self) {
-        let rootable: FxHashSet<_> = self.rootable().into_iter().map(|x| x.as_single()).collect();
+        let rootable: FxHashSet<_> = self.rootable().into_iter().map(|x| x.root()).collect();
         let mut deps = self.deps.iter().cloned().collect_vec();
         for dep in deps.iter_mut() {
             dep.remove_deps(&rootable);
@@ -68,7 +70,7 @@ impl Plan {
         self.deps = deps.into_iter().collect();
     }
 
-    pub fn flat_deps(&self) -> BTreeSet<ExactDep> {
+    pub fn flat_deps(&self) -> BTreeSet<DependencyTree> {
         flatten_deps(self.deps.iter())
     }
 
@@ -90,7 +92,7 @@ impl Plan {
 }
 
 #[tracing::instrument]
-pub async fn download_package(dep: &ExactDep) -> Result<()> {
+async fn download_package(dep: &Dependency) -> Result<()> {
     let target_path = scoped_join("node_modules/.cotton/tar", dep.tar())?;
     let target_part_path = scoped_join("node_modules/.cotton/tar", dep.tar_part())?;
 
@@ -119,8 +121,20 @@ pub async fn download_package(dep: &ExactDep) -> Result<()> {
     Ok(())
 }
 
+pub async fn download_package_shared(dep: Dependency) -> Result<()> {
+    static CACHE: Lazy<Cache<Dependency, Result<(), CompactString>>> = Lazy::new(|| {
+        Cache::new(|key: Dependency| async move {
+            download_package(&key)
+                .await
+                .map_err(|e| e.to_compact_string())
+        })
+    });
+
+    CACHE.get(dep).await.map_err(Report::msg)
+}
+
 #[tracing::instrument]
-pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
+pub async fn extract_package(prefix: &[&str], dep: &Dependency) -> Result<()> {
     let mut target_path = PathBuf::new();
 
     for segment in prefix {
@@ -180,8 +194,8 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
 
 #[async_recursion]
 #[tracing::instrument]
-pub async fn extract_dep(prefix: &[&str], dep: &ExactDep) -> Result<()> {
-    extract_package(prefix, dep).await?;
+pub async fn extract_dep(prefix: &[&str], dep: &DependencyTree) -> Result<()> {
+    extract_package(prefix, &dep.root()).await?;
 
     try_join_all(dep.deps.iter().map(|inner_dep| async {
         let mut prefix = prefix.to_vec();
@@ -196,13 +210,10 @@ pub async fn extract_dep(prefix: &[&str], dep: &ExactDep) -> Result<()> {
 }
 
 pub async fn execute_plan(plan: &Plan) -> Result<()> {
-    create_dir_all("node_modules/.cotton/tar").await?;
-    create_dir_all("node_modules/.bin").await?;
-
     try_join_all(
         plan.flat_deps()
             .into_iter()
-            .map(|x| async move { download_package(&x).await }),
+            .map(|x| async move { download_package_shared(x.root()).await }),
     )
     .await?;
 
