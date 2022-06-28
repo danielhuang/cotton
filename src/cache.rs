@@ -6,12 +6,12 @@ use futures::{
 };
 use tokio::sync::Mutex;
 
-pub struct Cache<K: Eq + Hash + Clone + Send + 'static, V: Clone + 'static> {
+pub struct Cache<K: Eq + Hash + Clone + Send + 'static, V: Clone + Send + 'static> {
     loader: Box<dyn Fn(K) -> BoxFuture<'static, V> + Send + Sync + 'static>,
     map: Mutex<HashMap<K, Shared<BoxFuture<'static, V>>>>,
 }
 
-impl<K: Eq + Hash + Clone + Send + 'static, V: Clone + 'static> Cache<K, V> {
+impl<K: Eq + Hash + Clone + Send + 'static, V: Clone + Send + 'static> Cache<K, V> {
     pub fn new<T, F>(loader: T) -> Self
     where
         F: Future<Output = V> + Sized + Send + 'static,
@@ -22,7 +22,7 @@ impl<K: Eq + Hash + Clone + Send + 'static, V: Clone + 'static> Cache<K, V> {
         Self {
             loader: Box::new(move |key| {
                 let loader = loader.clone();
-                Box::pin(async move { loader(key).await })
+                Box::pin(async move { tokio::spawn(loader(key)).await.unwrap() })
             }),
             map: Mutex::new(HashMap::new()),
         }

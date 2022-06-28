@@ -4,10 +4,6 @@ use std::{
 };
 
 use async_recursion::async_recursion;
-use cache_loader_async::{
-    backing::HashMapBacking,
-    cache_api::{CacheEntry, LoadingCache},
-};
 use cached::proc_macro::cached;
 use color_eyre::{
     eyre::{ContextCompat, Result},
@@ -69,6 +65,9 @@ impl PlatformMap {
 
 #[tracing::instrument]
 pub async fn fetch_package(name: &str) -> Result<RegistryResponse, reqwest::Error> {
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
+    let _permit = S.acquire().await.unwrap();
+
     CLIENT2
         .get(format!("https://registry.npmjs.org/{}", name))
         .send()
@@ -177,12 +176,7 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
         return Ok(None);
     }
 
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
-    let permit = S.acquire().await.unwrap();
-
     let (version, package) = fetch_dep_single(d.clone()).await?;
-
-    drop(permit);
 
     if !package.os.is_supported(get_node_os()) || !package.cpu.is_supported(get_node_cpu()) {
         if d.optional {
@@ -221,17 +215,15 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
     })))
 }
 
-#[tracing::instrument]
 pub async fn fetch_dep_cached(
     d: DepReq,
     stack: Vec<(DepReq, Version)>,
 ) -> Result<Option<Arc<ExactDep>>> {
     type Args = (DepReq, Vec<(DepReq, Version)>);
     type Output = Option<Arc<ExactDep>>;
-    type Cache<I, T, E> = LoadingCache<I, T, E, HashMapBacking<I, CacheEntry<T, E>>>;
 
-    static CACHE: Lazy<Cache<Args, Output, CompactString>> = Lazy::new(|| {
-        LoadingCache::new(move |(d, stack): Args| async move {
+    static CACHE: Lazy<Cache<Args, Result<Output, CompactString>>> = Lazy::new(|| {
+        Cache::new(|(d, stack): Args| async move {
             fetch_dep(&d, &stack)
                 .await
                 .map_err(|e| e.to_compact_string())

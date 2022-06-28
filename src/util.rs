@@ -31,10 +31,7 @@ impl PartialRange {
     pub fn satisfies(&self, v: &Version) -> bool {
         match self {
             PartialRange::Range(r) => r.satisfies(v),
-            PartialRange::Oops(s) => {
-                println!("ops: {}", s);
-                false
-            }
+            PartialRange::Oops(_) => false,
         }
     }
 }
