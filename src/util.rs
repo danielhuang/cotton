@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
 };
 
+use compact_str::CompactString;
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder};
@@ -23,7 +24,7 @@ pub static CLIENT2: Lazy<Client> = Lazy::new(|| {
 #[serde(untagged)]
 pub enum PartialRange {
     Range(Range),
-    Oops(String),
+    Oops(CompactString),
 }
 
 impl PartialRange {

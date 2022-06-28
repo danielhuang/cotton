@@ -8,6 +8,7 @@ mod util;
 use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
+use compact_str::CompactString;
 use futures::future::try_join_all;
 use itertools::Itertools;
 use npm::fetch_package;
@@ -38,9 +39,9 @@ enum Subcommand {
     /// Install packages defined in package.json
     Install,
     /// Add package to package.json
-    Add { name: String },
+    Add { name: CompactString },
     /// Run a script defined in package.json
-    Run { name: String },
+    Run { name: CompactString },
 }
 
 fn install_tracing() {
@@ -173,7 +174,7 @@ async fn main() -> Result<()> {
                 .wrap_err("`package.json` is missing `dependencies`")?
                 .as_object_mut()
                 .wrap_err("`package.json` contains invalid `dependencies`")?
-                .insert(name, Value::String(latest.to_string()));
+                .insert(name.to_string(), Value::String(latest.to_string()));
 
             save_package(&package).await?;
         }

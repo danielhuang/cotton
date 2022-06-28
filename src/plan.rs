@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, path::PathBuf};
 use async_compression::tokio::write::GzipDecoder;
 use async_recursion::async_recursion;
 use color_eyre::eyre::Result;
+use compact_str::ToCompactString;
 use futures::{future::try_join_all, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use multimap::MultiMap;
@@ -35,7 +36,10 @@ impl Plan {
 
     pub fn rootable(&self) -> Vec<ExactDep> {
         let flat = flatten_deps(self.deps.iter());
-        let map: MultiMap<_, _> = flat.into_iter().map(|x| (x.name.to_string(), x)).collect();
+        let map: MultiMap<_, _> = flat
+            .into_iter()
+            .map(|x| (x.name.to_compact_string(), x))
+            .collect();
         map.keys()
             .map(|x| {
                 map.get_vec(x)
@@ -72,7 +76,7 @@ impl Plan {
         let map: FxHashMap<_, _> = self
             .deps
             .iter()
-            .map(|x| (x.name.to_string(), x.version.clone()))
+            .map(|x| (x.name.to_compact_string(), x.version.clone()))
             .collect();
         package.iter_with_dev().all(|req| {
             if let Some(version) = map.get(&req.name) {
@@ -96,7 +100,7 @@ pub async fn download_package(dep: &ExactDep) -> Result<()> {
         return Ok(());
     }
 
-    let mut res = CLIENT.get(&dep.dist.tarball).send().await?.bytes_stream();
+    let mut res = CLIENT.get(&*dep.dist.tarball).send().await?.bytes_stream();
     let target = File::create(&target_part_path).await?;
 
     let mut target = GzipDecoder::new(target);
@@ -124,7 +128,7 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
         target_path.push("node_modules");
     }
 
-    target_path.push(&dep.name);
+    target_path.push(&*dep.name);
 
     target_path = scoped_join("node_modules", target_path)?;
 
@@ -154,8 +158,8 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
 
     if prefix.is_empty() {
         for (cmd, path) in &dep.bins {
-            let path = path.to_string();
-            let mut path = PathBuf::from("../").join(&dep.name).join(path);
+            let path = path.to_compact_string();
+            let mut path = PathBuf::from("../").join(&*dep.name).join(&*path);
             if metadata(PathBuf::from("node_modules/.bin").join(&path))
                 .await
                 .is_err()
@@ -163,8 +167,8 @@ pub async fn extract_package(prefix: &[&str], dep: &ExactDep) -> Result<()> {
                 path.set_extension("js");
             }
             if !cmd.contains('/') {
-                let _ = remove_file(PathBuf::from("node_modules/.bin").join(cmd)).await;
-                symlink(&path, PathBuf::from("node_modules/.bin").join(cmd)).await?;
+                let _ = remove_file(PathBuf::from("node_modules/.bin").join(&**cmd)).await;
+                symlink(&path, PathBuf::from("node_modules/.bin").join(&**cmd)).await?;
             }
         }
     }

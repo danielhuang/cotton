@@ -12,6 +12,7 @@ cache_loader_async = "0.2.0"
 cached = "0.34.1"
 clap = { version = "3.2.1", features = ["derive"] }
 color-eyre = "0.6.1"
+compact_str = { version = "0.5.0", features = ["serde"] }
 futures = "0.3.21"
 indexmap = { version = "1.8.2", features = ["serde"] }
 indicatif = "0.16.2"

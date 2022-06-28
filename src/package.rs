@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Debug, path::Path};
 
 use color_eyre::eyre::Result;
+use compact_str::{CompactString, ToCompactString};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -15,26 +16,28 @@ use crate::{npm::PlatformMap, util::PartialRange};
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct Package {
-    pub name: Option<String>,
+    pub name: Option<CompactString>,
     pub bin: Option<Bin>,
     pub dist: Dist,
-    pub dependencies: FxHashMap<String, PartialRange>,
-    pub optional_dependencies: FxHashMap<String, PartialRange>,
-    pub dev_dependencies: FxHashMap<String, PartialRange>,
+    pub dependencies: FxHashMap<CompactString, PartialRange>,
+    pub optional_dependencies: FxHashMap<CompactString, PartialRange>,
+    pub dev_dependencies: FxHashMap<CompactString, PartialRange>,
     pub os: PlatformMap,
     pub cpu: PlatformMap,
-    pub scripts: FxHashMap<String, String>,
+    pub scripts: FxHashMap<CompactString, CompactString>,
     #[serde(flatten)]
     pub rest: Value,
 }
 
 impl Package {
-    pub fn bins(&self) -> BTreeMap<String, String> {
+    pub fn bins(&self) -> BTreeMap<CompactString, CompactString> {
         match &self.bin {
             Some(Bin::Multi(x)) => x.clone().into_iter().collect(),
             Some(Bin::Single(x)) => {
                 if let Some(name) = &self.name {
-                    [(name.to_string(), x.to_string())].into_iter().collect()
+                    [(name.to_compact_string(), x.to_compact_string())]
+                        .into_iter()
+                        .collect()
                 } else {
                     [].into_iter().collect()
                 }
@@ -47,20 +50,20 @@ impl Package {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(untagged)]
 pub enum Bin {
-    Single(String),
-    Multi(FxHashMap<String, String>),
+    Single(CompactString),
+    Multi(FxHashMap<CompactString, CompactString>),
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
 pub struct Dist {
-    pub tarball: String,
+    pub tarball: CompactString,
     pub unpacked_size: Option<u64>,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct DepReq {
-    pub name: String,
+    pub name: CompactString,
     pub version: PartialRange,
     pub optional: bool,
 }
@@ -78,7 +81,7 @@ impl Debug for DepReq {
 impl Package {
     pub fn iter(&self) -> impl Iterator<Item = DepReq> + '_ {
         self.dependencies.iter().map(|(n, v)| DepReq {
-            name: n.to_string(),
+            name: n.to_compact_string(),
             version: v.to_owned(),
             optional: self.optional_dependencies.contains_key(n),
         })
@@ -88,12 +91,12 @@ impl Package {
         self.dependencies
             .iter()
             .map(|(n, v)| DepReq {
-                name: n.to_string(),
+                name: n.to_compact_string(),
                 version: v.to_owned(),
                 optional: self.optional_dependencies.contains_key(n),
             })
             .chain(self.dev_dependencies.iter().map(|(n, v)| DepReq {
-                name: n.to_string(),
+                name: n.to_compact_string(),
                 version: v.to_owned(),
                 optional: self.optional_dependencies.contains_key(n),
             }))

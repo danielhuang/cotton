@@ -13,6 +13,7 @@ use color_eyre::{
     eyre::{ContextCompat, Result},
     Report,
 };
+use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -34,12 +35,12 @@ use crate::{
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct RegistryResponse {
     #[serde(rename = "dist-tags")]
-    pub dist_tags: FxHashMap<String, String>,
+    pub dist_tags: FxHashMap<CompactString, CompactString>,
     pub versions: IndexMap<Version, Package>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default)]
-pub struct PlatformMap(BTreeSet<String>);
+pub struct PlatformMap(BTreeSet<CompactString>);
 
 impl PlatformMap {
     pub fn allowed(&self) -> impl Iterator<Item = &str> {
@@ -77,16 +78,20 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse, reqwest::Erro
 }
 
 pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
-    static CACHE: Lazy<Cache<String, Result<Arc<RegistryResponse>, String>>> = Lazy::new(|| {
-        Cache::new(|key: String| async move {
-            fetch_package(&key)
-                .await
-                .map(Arc::new)
-                .map_err(|e| e.to_string())
-        })
-    });
+    static CACHE: Lazy<Cache<CompactString, Result<Arc<RegistryResponse>, CompactString>>> =
+        Lazy::new(|| {
+            Cache::new(|key: CompactString| async move {
+                fetch_package(&key)
+                    .await
+                    .map(Arc::new)
+                    .map_err(|e| e.to_compact_string())
+            })
+        });
 
-    CACHE.get(name.to_string()).await.map_err(Report::msg)
+    CACHE
+        .get(name.to_compact_string())
+        .await
+        .map_err(Report::msg)
 }
 
 #[tracing::instrument]
@@ -105,11 +110,11 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub struct ExactDep {
-    pub name: String,
+    pub name: CompactString,
     pub version: Version,
     pub dist: Dist,
     pub deps: BTreeSet<Arc<ExactDep>>,
-    pub bins: BTreeMap<String, String>,
+    pub bins: BTreeMap<CompactString, CompactString>,
 }
 
 impl ExactDep {
@@ -141,7 +146,7 @@ impl ExactDep {
 
     pub fn as_single(&self) -> SingleDep {
         SingleDep {
-            name: self.name.to_string(),
+            name: self.name.to_compact_string(),
             version: self.version.clone(),
         }
     }
@@ -151,7 +156,7 @@ impl Debug for ExactDep {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExactDep")
             .field("name", &self.name)
-            .field("version", &self.version.to_string())
+            .field("version", &self.version)
             .field("deps", &self.deps)
             .finish()
     }
@@ -159,7 +164,7 @@ impl Debug for ExactDep {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SingleDep {
-    name: String,
+    name: CompactString,
     version: Version,
 }
 
@@ -208,7 +213,7 @@ pub async fn fetch_dep(d: &DepReq, stack: &[(DepReq, Version)]) -> Result<Option
     PROGRESS_BAR.set_message(format!("fetched {}", d.name.bright_blue()));
 
     Ok(Some(Arc::new(ExactDep {
-        name: d.name.to_string(),
+        name: d.name.to_compact_string(),
         version: version.to_owned(),
         deps: deps.into_iter().collect(),
         dist: package.dist.clone(),
@@ -225,16 +230,18 @@ pub async fn fetch_dep_cached(
     type Output = Option<Arc<ExactDep>>;
     type Cache<I, T, E> = LoadingCache<I, T, E, HashMapBacking<I, CacheEntry<T, E>>>;
 
-    static CACHE: Lazy<Cache<Args, Output, String>> = Lazy::new(|| {
+    static CACHE: Lazy<Cache<Args, Output, CompactString>> = Lazy::new(|| {
         LoadingCache::new(move |(d, stack): Args| async move {
-            fetch_dep(&d, &stack).await.map_err(|e| e.to_string())
+            fetch_dep(&d, &stack)
+                .await
+                .map_err(|e| e.to_compact_string())
         })
     });
 
     CACHE
         .get((d, stack))
         .await
-        .map_err(|e| Report::msg(e.to_string()))
+        .map_err(|e| Report::msg(e.to_compact_string()))
 }
 
 fn flatten_dep(dep: &ExactDep, set: &mut BTreeSet<ExactDep>) {
