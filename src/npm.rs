@@ -6,7 +6,7 @@ use std::{
 use async_recursion::async_recursion;
 use cached::proc_macro::cached;
 use color_eyre::{
-    eyre::{ContextCompat, Result},
+    eyre::{eyre, ContextCompat, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
@@ -26,7 +26,7 @@ use crate::{
     package::{DepReq, Dist, Package},
     plan::download_package_shared,
     progress::PROGRESS_BAR,
-    util::{get_node_cpu, get_node_os, CLIENT2},
+    util::{decode_json, get_node_cpu, get_node_os, CLIENT2},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -65,16 +65,19 @@ impl PlatformMap {
 }
 
 #[tracing::instrument]
-pub async fn fetch_package(name: &str) -> Result<RegistryResponse, reqwest::Error> {
+pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
     static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
     let _permit = S.acquire().await.unwrap();
 
-    CLIENT2
-        .get(format!("https://registry.npmjs.org/{}", name))
-        .send()
-        .await?
-        .json()
-        .await
+    decode_json(
+        &CLIENT2
+            .get(format!("https://registry.npmjs.org/{}", name))
+            .send()
+            .await?
+            .bytes()
+            .await?,
+    )
+    .map_err(|e| eyre!("[{name}] {e}"))
 }
 
 pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
@@ -244,10 +247,7 @@ pub async fn fetch_dep_cached(
         })
     });
 
-    CACHE
-        .get((d, stack))
-        .await
-        .map_err(|e| Report::msg(e.to_compact_string()))
+    CACHE.get((d, stack)).await.map_err(Report::msg)
 }
 
 fn flatten_dep(dep: &DependencyTree, set: &mut BTreeSet<DependencyTree>) {

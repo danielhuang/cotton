@@ -213,7 +213,9 @@ async fn main() -> Result<()> {
             let script = package
                 .scripts
                 .get(&name)
-                .wrap_err(format!("Script `{}` is not defined", name))?;
+                .wrap_err(format!("Script `{}` is not defined", name))?
+                .as_str()
+                .wrap_err(format!("Script `{}` is not a string", name))?;
 
             join_paths()?;
 

@@ -7,7 +7,7 @@ use compact_str::CompactString;
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 pub static CLIENT2: Lazy<Client> = Lazy::new(|| {
@@ -19,6 +19,14 @@ pub static CLIENT2: Lazy<Client> = Lazy::new(|| {
         .build()
         .unwrap()
 });
+
+pub fn decode_json<T: DeserializeOwned>(
+    x: &[u8],
+) -> Result<T, serde_path_to_error::Error<serde_json::Error>> {
+    let jd = &mut serde_json::Deserializer::from_slice(x);
+
+    serde_path_to_error::deserialize(jd)
+}
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 #[serde(untagged)]

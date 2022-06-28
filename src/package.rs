@@ -24,7 +24,7 @@ pub struct Package {
     pub dev_dependencies: FxHashMap<CompactString, PartialRange>,
     pub os: PlatformMap,
     pub cpu: PlatformMap,
-    pub scripts: FxHashMap<CompactString, CompactString>,
+    pub scripts: FxHashMap<CompactString, Value>,
     #[serde(flatten)]
     pub rest: Value,
 }
