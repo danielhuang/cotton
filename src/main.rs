@@ -38,6 +38,8 @@ struct Args {
 enum Subcommand {
     /// Install packages defined in package.json
     Install,
+    /// Prepare and save a newly planned lockfile
+    Update,
     /// Add package to package.json
     Add { name: CompactString },
     /// Run a script defined in package.json
@@ -157,6 +159,19 @@ async fn main() -> Result<()> {
     match args.cmd {
         Subcommand::Install => {
             install().await?;
+        }
+        Subcommand::Update => {
+            let package = read_package().await?;
+            let start = Instant::now();
+
+            let plan = prepare_plan(&package).await?;
+            write_json("cotton.lock", &plan).await?;
+
+            PROGRESS_BAR.println(format!(
+                "Prepared {} packages in {}ms",
+                plan.flat_deps().len().yellow(),
+                start.elapsed().as_millis().yellow()
+            ));
         }
         Subcommand::Add { name } => {
             let mut package = read_package_as_value().await?;
