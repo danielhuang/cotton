@@ -20,7 +20,7 @@ Installing packages used by [create-react-app](https://create-react-app.dev/):
 
 | Tool | Initial install | With lockfile only | With lockfile and cache |
 | --- | --- | --- | --- |
-| Cotton | 12.9s | 4.1s | 2.7s |
+| Cotton | 8.4s | 4.1s | 2.7s |
 | Yarn | 27.6s | 13.7s | 3.7s |
 | npm | 44.2s | 14.5s | 5.1s |
 
