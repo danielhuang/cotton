@@ -25,7 +25,7 @@ Installing packages used by [create-react-app](https://create-react-app.dev/):
 | Yarn | 26.5s | 13.6s | 3.7s |
 | npm | 43.5s | 14.5s | 4.9s |
 
-## Disadvantages
+## Limitations
 
 * Cotton does not currently support Git repositories, direct urls, or local paths as dependencies
 * Cotton does not execute `postinstall` scripts after installation
