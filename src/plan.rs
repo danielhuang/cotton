@@ -4,7 +4,7 @@ use async_compression::tokio::write::GzipDecoder;
 use async_recursion::async_recursion;
 use color_eyre::{eyre::Result, Report};
 use compact_str::{CompactString, ToCompactString};
-use futures::{future::try_join_all, StreamExt, TryFutureExt, TryStreamExt};
+use futures::{future::try_join_all, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use multimap::MultiMap;
 use once_cell::sync::Lazy;
@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     fs::{create_dir_all, metadata, remove_dir_all, remove_file, rename, symlink, File},
     io::AsyncWriteExt,
+    sync::Semaphore,
 };
 use tokio_tar::Archive;
 
@@ -93,6 +94,9 @@ impl Plan {
 
 #[tracing::instrument]
 async fn download_package(dep: &Dependency) -> Result<()> {
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
+    let _permit = S.acquire().await.unwrap();
+
     let target_path = scoped_join("node_modules/.cotton/tar", dep.tar())?;
     let target_part_path = scoped_join("node_modules/.cotton/tar", dep.tar_part())?;
 
