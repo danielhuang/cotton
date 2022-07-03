@@ -201,7 +201,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
         if let Err(e) = file.unpack(&target_file).await {
             PROGRESS_BAR.println(format!(
                 "{} ({}) {}",
-                "Warning:".on_yellow(),
+                " Warning ".on_yellow(),
                 dep.id().bright_blue(),
                 e
             ));
