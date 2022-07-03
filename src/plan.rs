@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
+    sync::Arc,
 };
 
 use async_compression::tokio::write::GzipDecoder;
@@ -38,44 +39,11 @@ impl Plan {
         Self { trees }
     }
 
-    pub fn flatten(&mut self) {
-        let mut flat_deps = self.flat_dep_trees();
-        let current_root_names: FxHashSet<_> = self
-            .trees
-            .values()
-            .map(|x| x.root.name.to_compact_string())
-            .collect();
-        for dep in flat_deps.clone() {
-            if current_root_names.contains(&dep.root.name) {
-                flat_deps.remove(&dep);
-            }
-        }
-        let mut hoisted: FxHashMap<_, DependencyTree> = FxHashMap::default();
-        for dep in flat_deps {
-            if let Some(prev) = hoisted.get(&dep.root.name) {
-                if dep.root.version > prev.root.version {
-                    hoisted.insert(dep.root.name.to_compact_string(), dep);
-                }
-            } else {
-                hoisted.insert(dep.root.name.to_compact_string(), dep);
-            }
-        }
-        for item in hoisted.values() {
-            self.trees
-                .insert(item.root.name.to_compact_string(), item.clone());
-        }
-        let roots: BTreeSet<_> = self.trees.values().cloned().collect();
-        for tree in self.trees.values_mut() {
-            *tree = tree.filter(&roots.iter().cloned().map(|x| x.root).collect());
-        }
-    }
-
-    pub fn flat_dep_trees(&self) -> BTreeSet<DependencyTree> {
-        flatten_dep_trees(self.trees.values())
-    }
-
     pub fn flat_deps(&self) -> BTreeSet<Dependency> {
-        self.flat_dep_trees().into_iter().map(|x| x.root).collect()
+        flat_dep_trees(&self.trees)
+            .into_iter()
+            .map(|x| x.root)
+            .collect()
     }
 
     pub fn satisfies(&self, package: &Package) -> bool {
@@ -93,6 +61,68 @@ impl Plan {
             false
         })
     }
+}
+
+pub fn flatten(trees: &mut BTreeMap<CompactString, DependencyTree>) {
+    let mut flat_deps = flat_dep_trees(trees);
+    let current_root_names: FxHashSet<_> = trees
+        .values()
+        .map(|x| x.root.name.to_compact_string())
+        .collect();
+    for dep in flat_deps.clone() {
+        if current_root_names.contains(&dep.root.name) {
+            flat_deps.remove(&dep);
+        }
+    }
+    let mut hoisted: FxHashMap<_, DependencyTree> = FxHashMap::default();
+    for dep in flat_deps {
+        if let Some(prev) = hoisted.get(&dep.root.name) {
+            if dep.root.version > prev.root.version {
+                hoisted.insert(dep.root.name.to_compact_string(), dep);
+            }
+        } else {
+            hoisted.insert(dep.root.name.to_compact_string(), dep);
+        }
+    }
+    for item in hoisted.values() {
+        trees.insert(item.root.name.to_compact_string(), item.clone());
+    }
+    let roots: BTreeSet<_> = trees.values().cloned().collect();
+    for tree in trees.values_mut() {
+        *tree = tree.filter(&roots.iter().cloned().map(|x| x.root).collect());
+    }
+    for tree in trees.values_mut() {
+        let mut children = tree
+            .children
+            .iter()
+            .map(|(name, item)| (name.clone(), (**item).clone()))
+            .collect();
+        flatten(&mut children);
+        tree.children = children
+            .into_iter()
+            .map(|(name, item)| (name, Arc::new(item)))
+            .collect();
+    }
+}
+
+pub fn flat_dep_trees(trees: &BTreeMap<CompactString, DependencyTree>) -> BTreeSet<DependencyTree> {
+    flatten_dep_trees(trees.values())
+}
+
+pub fn tree_size_arc(trees: &BTreeMap<CompactString, Arc<DependencyTree>>) -> usize {
+    trees.len()
+        + trees
+            .values()
+            .map(|x| tree_size_arc(&x.children))
+            .sum::<usize>()
+}
+
+pub fn tree_size(trees: &BTreeMap<CompactString, DependencyTree>) -> usize {
+    trees.len()
+        + trees
+            .values()
+            .map(|x| tree_size_arc(&x.children))
+            .sum::<usize>()
 }
 
 #[tracing::instrument]

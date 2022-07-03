@@ -13,6 +13,7 @@ use futures::future::try_join_all;
 use itertools::Itertools;
 use npm::fetch_package;
 use package::{read_package, read_package_as_value, save_package, write_json, Package};
+use plan::{flatten, tree_size};
 use serde_json::Value;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tikv_jemallocator::Jemalloc;
@@ -82,7 +83,7 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
             .map(|x| (x.root.name.to_compact_string(), (**x).clone()))
             .collect(),
     );
-    plan.flatten();
+    flatten(&mut plan.trees);
 
     PROGRESS_BAR.set_message(format!("planned {} deps", plan.trees.len().yellow()));
 
@@ -135,7 +136,7 @@ async fn install() -> Result<(), color_eyre::Report> {
 
     PROGRESS_BAR.println(format!(
         "Installed {} packages in {}ms",
-        plan.flat_dep_trees().len().yellow(),
+        tree_size(&plan.trees).yellow(),
         start.elapsed().as_millis().yellow()
     ));
 
@@ -185,7 +186,7 @@ async fn main() -> Result<()> {
 
             PROGRESS_BAR.println(format!(
                 "Prepared {} packages in {}ms",
-                plan.flat_dep_trees().len().yellow(),
+                tree_size(&plan.trees).yellow(),
                 start.elapsed().as_millis().yellow()
             ));
         }
