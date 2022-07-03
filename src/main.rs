@@ -8,7 +8,7 @@ mod util;
 use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
-use compact_str::CompactString;
+use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
 use itertools::Itertools;
 use npm::fetch_package;
@@ -77,11 +77,14 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
 
     PROGRESS_BAR.set_message(format!("fetched {} root deps", deps.len().yellow()));
 
-    let mut plan = Plan::new(deps.iter().map(|x| (**x).clone()).collect());
-    plan.extract();
-    plan.cleanup();
+    let mut plan = Plan::new(
+        deps.iter()
+            .map(|x| (x.root.name.to_compact_string(), (**x).clone()))
+            .collect(),
+    );
+    plan.flatten();
 
-    PROGRESS_BAR.set_message(format!("planned {} deps", plan.deps.len().yellow()));
+    PROGRESS_BAR.set_message(format!("planned {} deps", plan.trees.len().yellow()));
 
     Ok(plan)
 }

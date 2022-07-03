@@ -111,51 +111,33 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
     Ok((version.clone(), package.clone()))
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Debug)]
 pub struct DependencyTree {
-    pub name: CompactString,
-    pub version: Version,
-    pub dist: Dist,
-    pub deps: BTreeSet<Arc<DependencyTree>>,
-    pub bins: BTreeMap<CompactString, CompactString>,
+    pub root: Dependency,
+    pub children: BTreeMap<CompactString, Arc<DependencyTree>>,
 }
 
 impl DependencyTree {
-    pub fn remove_deps(&mut self, filter: &FxHashSet<Dependency>) {
-        self.deps = self
-            .deps
-            .iter()
-            .cloned()
-            .filter(|dep| !filter.contains(&dep.root()))
-            .map(|dep| {
-                let mut dep = (*dep).clone();
-                dep.remove_deps(filter);
-                Arc::new(dep)
-            })
-            .collect();
-    }
-
-    pub fn root(&self) -> Dependency {
-        Dependency {
-            name: self.name.clone(),
-            version: self.version.clone(),
-            dist: self.dist.clone(),
-            bins: self.bins.clone(),
+    pub fn filter(&self, exclude: &FxHashSet<Dependency>) -> Self {
+        Self {
+            root: self.root.clone(),
+            children: self
+                .children
+                .clone()
+                .into_iter()
+                .filter_map(|(name, tree)| {
+                    if !exclude.contains(&tree.root) {
+                        Some((name, Arc::new(tree.filter(exclude))))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
         }
     }
 }
 
-impl Debug for DependencyTree {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ExactDep")
-            .field("name", &self.name)
-            .field("version", &self.version)
-            .field("deps", &self.deps)
-            .finish()
-    }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Serialize, Deserialize)]
 pub struct Dependency {
     pub name: CompactString,
     pub version: Version,
@@ -220,14 +202,19 @@ pub async fn fetch_dep(
     PROGRESS_BAR.set_message(format!("fetched {}", d.name.bright_blue()));
 
     let tree = DependencyTree {
-        name: d.name.to_compact_string(),
-        version: version.to_owned(),
-        deps: deps.into_iter().collect(),
-        dist: package.dist.clone(),
-        bins: package.bins(),
+        children: deps
+            .into_iter()
+            .map(|x| (x.root.name.to_compact_string(), x))
+            .collect(),
+        root: Dependency {
+            name: d.name.to_compact_string(),
+            version: version.to_owned(),
+            dist: package.dist.clone(),
+            bins: package.bins(),
+        },
     };
 
-    tokio::spawn(download_package_shared(tree.root()));
+    tokio::spawn(download_package_shared(tree.root.clone()));
 
     Ok(Some(Arc::new(tree)))
 }
@@ -250,20 +237,20 @@ pub async fn fetch_dep_cached(
     CACHE.get((d, stack)).await.map_err(Report::msg)
 }
 
-fn flatten_dep(dep: &DependencyTree, set: &mut BTreeSet<DependencyTree>) {
-    if set.insert(dep.clone()) {
-        for dep in &dep.deps {
-            flatten_dep(dep, set)
+fn flatten_dep_tree(dep: &DependencyTree, set: &mut BTreeSet<Dependency>) {
+    if set.insert(dep.root.clone()) {
+        for dep in dep.children.values() {
+            flatten_dep_tree(dep, set)
         }
     }
 }
 
-pub fn flatten_deps<'a>(
+pub fn flatten_dep_trees<'a>(
     deps: impl Iterator<Item = &'a DependencyTree>,
-) -> BTreeSet<DependencyTree> {
+) -> BTreeSet<Dependency> {
     let mut set = BTreeSet::default();
     for dep in deps {
-        flatten_dep(dep, &mut set);
+        flatten_dep_tree(dep, &mut set);
     }
     set
 }

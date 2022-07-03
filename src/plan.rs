@@ -1,12 +1,13 @@
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
 use async_compression::tokio::write::GzipDecoder;
 use async_recursion::async_recursion;
 use color_eyre::{eyre::Result, Report};
 use compact_str::{CompactString, ToCompactString};
 use futures::{future::try_join_all, StreamExt, TryStreamExt};
-use itertools::Itertools;
-use multimap::MultiMap;
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -21,7 +22,7 @@ use tokio_tar::Archive;
 
 use crate::{
     cache::Cache,
-    npm::{flatten_deps, Dependency, DependencyTree},
+    npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
     progress::PROGRESS_BAR,
     util::{PartialRange, CLIENT},
@@ -29,57 +30,59 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Plan {
-    pub deps: BTreeSet<DependencyTree>,
+    pub trees: BTreeMap<CompactString, DependencyTree>,
 }
 
 impl Plan {
-    pub fn new(deps: BTreeSet<DependencyTree>) -> Self {
-        Self { deps }
+    pub fn new(trees: BTreeMap<CompactString, DependencyTree>) -> Self {
+        Self { trees }
     }
 
-    pub fn rootable(&self) -> Vec<DependencyTree> {
-        let flat = flatten_deps(self.deps.iter());
-        let map: MultiMap<_, _> = flat
-            .into_iter()
-            .map(|x| (x.name.to_compact_string(), x))
+    pub fn flatten(&mut self) {
+        let mut flat_deps = self.flat_deps();
+        let current_root_names: FxHashSet<_> = self
+            .trees
+            .values()
+            .map(|x| x.root.name.to_compact_string())
             .collect();
-        map.keys()
-            .map(|x| {
-                map.get_vec(x)
-                    .unwrap()
-                    .iter()
-                    .max_by_key(|x| &x.version)
-                    .unwrap()
-            })
-            .cloned()
-            .collect()
-    }
-
-    pub fn extract(&mut self) {
-        let rootable = self.rootable();
-        for r in rootable {
-            self.deps.insert(r.clone());
+        for dep in flat_deps.clone() {
+            if current_root_names.contains(&dep.name) {
+                flat_deps.remove(&dep);
+            }
+        }
+        let mut hoisted: FxHashMap<_, Dependency> = FxHashMap::default();
+        for dep in flat_deps {
+            if let Some(prev) = hoisted.get(&dep.name) {
+                if dep.version > prev.version {
+                    hoisted.insert(dep.name.to_compact_string(), dep);
+                }
+            } else {
+                hoisted.insert(dep.name.to_compact_string(), dep);
+            }
+        }
+        for tree in self.trees.values_mut() {
+            *tree = tree.filter(&hoisted.values().cloned().collect());
+        }
+        for item in hoisted.values() {
+            self.trees.insert(
+                item.name.to_compact_string(),
+                DependencyTree {
+                    root: item.clone(),
+                    children: Default::default(),
+                },
+            );
         }
     }
 
-    pub fn cleanup(&mut self) {
-        let rootable: FxHashSet<_> = self.rootable().into_iter().map(|x| x.root()).collect();
-        let mut deps = self.deps.iter().cloned().collect_vec();
-        for dep in deps.iter_mut() {
-            dep.remove_deps(&rootable);
-        }
-        self.deps = deps.into_iter().collect();
-    }
-
-    pub fn flat_deps(&self) -> BTreeSet<DependencyTree> {
-        flatten_deps(self.deps.iter())
+    pub fn flat_deps(&self) -> BTreeSet<Dependency> {
+        flatten_dep_trees(self.trees.values())
     }
 
     pub fn satisfies(&self, package: &Package) -> bool {
         let map: FxHashMap<_, _> = self
-            .deps
-            .iter()
-            .map(|x| (x.name.to_compact_string(), x.version.clone()))
+            .trees
+            .values()
+            .map(|x| (x.root.name.to_compact_string(), x.root.version.clone()))
             .collect();
         package.iter_with_dev().all(|req| {
             if let Some(version) = map.get(&req.name) {
@@ -199,11 +202,11 @@ pub async fn extract_package(prefix: &[&str], dep: &Dependency) -> Result<()> {
 #[async_recursion]
 #[tracing::instrument]
 pub async fn extract_dep(prefix: &[&str], dep: &DependencyTree) -> Result<()> {
-    extract_package(prefix, &dep.root()).await?;
+    extract_package(prefix, &dep.root).await?;
 
-    try_join_all(dep.deps.iter().map(|inner_dep| async {
+    try_join_all(dep.children.values().map(|inner_dep| async {
         let mut prefix = prefix.to_vec();
-        prefix.push(&dep.name);
+        prefix.push(&dep.root.name);
         extract_dep(&prefix, inner_dep).await?;
 
         Ok(()) as Result<_>
@@ -217,13 +220,13 @@ pub async fn execute_plan(plan: &Plan) -> Result<()> {
     try_join_all(
         plan.flat_deps()
             .into_iter()
-            .map(|x| async move { download_package_shared(x.root()).await }),
+            .map(|x| async move { download_package_shared(x).await }),
     )
     .await?;
 
     try_join_all(
-        plan.deps
-            .iter()
+        plan.trees
+            .values()
             .map(|x| async move { extract_dep(&[], x).await }),
     )
     .await?;
