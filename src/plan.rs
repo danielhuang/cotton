@@ -170,7 +170,9 @@ pub async fn download_package_shared(dep: Dependency) -> Result<()> {
 }
 
 #[tracing::instrument]
-pub async fn extract_package(prefix: &[CompactString], dep: &Dependency) -> Result<()> {
+pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Result<()> {
+    download_package_shared(dep.clone()).await?;
+
     let mut target_path = PathBuf::new();
 
     for segment in prefix {
@@ -223,15 +225,15 @@ pub async fn extract_package(prefix: &[CompactString], dep: &Dependency) -> Resu
         }
     }
 
-    PROGRESS_BAR.set_message(format!("extracted {}", dep.id().bright_blue()));
+    PROGRESS_BAR.set_message(format!("installed {}", dep.id().bright_blue()));
 
     Ok(())
 }
 
 #[async_recursion]
 #[tracing::instrument]
-pub async fn extract_dep(prefix: &[CompactString], dep: &DependencyTree) -> Result<()> {
-    extract_package(prefix, &dep.root).await?;
+pub async fn install_dep_tree(prefix: &[CompactString], dep: &DependencyTree) -> Result<()> {
+    install_package(prefix, &dep.root).await?;
 
     try_join_all(dep.children.values().map(|inner_dep| async {
         let mut prefix = prefix.to_vec();
@@ -239,7 +241,7 @@ pub async fn extract_dep(prefix: &[CompactString], dep: &DependencyTree) -> Resu
 
         let inner_dep = inner_dep.clone();
 
-        tokio::spawn(async move { extract_dep(&prefix, &inner_dep).await })
+        tokio::spawn(async move { install_dep_tree(&prefix, &inner_dep).await })
             .await
             .unwrap()?;
 
@@ -252,16 +254,9 @@ pub async fn extract_dep(prefix: &[CompactString], dep: &DependencyTree) -> Resu
 
 pub async fn execute_plan(plan: &Plan) -> Result<()> {
     try_join_all(
-        plan.flat_deps()
-            .into_iter()
-            .map(|x| async move { download_package_shared(x).await }),
-    )
-    .await?;
-
-    try_join_all(
         plan.trees
             .values()
-            .map(|x| async move { extract_dep(&[], x).await }),
+            .map(|x| async move { install_dep_tree(&[], x).await }),
     )
     .await?;
 
