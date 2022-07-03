@@ -39,43 +39,43 @@ impl Plan {
     }
 
     pub fn flatten(&mut self) {
-        let mut flat_deps = self.flat_deps();
+        let mut flat_deps = self.flat_dep_trees();
         let current_root_names: FxHashSet<_> = self
             .trees
             .values()
             .map(|x| x.root.name.to_compact_string())
             .collect();
         for dep in flat_deps.clone() {
-            if current_root_names.contains(&dep.name) {
+            if current_root_names.contains(&dep.root.name) {
                 flat_deps.remove(&dep);
             }
         }
-        let mut hoisted: FxHashMap<_, Dependency> = FxHashMap::default();
+        let mut hoisted: FxHashMap<_, DependencyTree> = FxHashMap::default();
         for dep in flat_deps {
-            if let Some(prev) = hoisted.get(&dep.name) {
-                if dep.version > prev.version {
-                    hoisted.insert(dep.name.to_compact_string(), dep);
+            if let Some(prev) = hoisted.get(&dep.root.name) {
+                if dep.root.version > prev.root.version {
+                    hoisted.insert(dep.root.name.to_compact_string(), dep);
                 }
             } else {
-                hoisted.insert(dep.name.to_compact_string(), dep);
+                hoisted.insert(dep.root.name.to_compact_string(), dep);
             }
         }
-        for tree in self.trees.values_mut() {
-            *tree = tree.filter(&hoisted.values().cloned().collect());
-        }
         for item in hoisted.values() {
-            self.trees.insert(
-                item.name.to_compact_string(),
-                DependencyTree {
-                    root: item.clone(),
-                    children: Default::default(),
-                },
-            );
+            self.trees
+                .insert(item.root.name.to_compact_string(), item.clone());
+        }
+        let roots: BTreeSet<_> = self.trees.values().cloned().collect();
+        for tree in self.trees.values_mut() {
+            *tree = tree.filter(&roots.iter().cloned().map(|x| x.root).collect());
         }
     }
 
-    pub fn flat_deps(&self) -> BTreeSet<Dependency> {
+    pub fn flat_dep_trees(&self) -> BTreeSet<DependencyTree> {
         flatten_dep_trees(self.trees.values())
+    }
+
+    pub fn flat_deps(&self) -> BTreeSet<Dependency> {
+        self.flat_dep_trees().into_iter().map(|x| x.root).collect()
     }
 
     pub fn satisfies(&self, package: &Package) -> bool {

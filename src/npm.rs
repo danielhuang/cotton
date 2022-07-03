@@ -237,8 +237,8 @@ pub async fn fetch_dep_cached(
     CACHE.get((d, stack)).await.map_err(Report::msg)
 }
 
-fn flatten_dep_tree(dep: &DependencyTree, set: &mut BTreeSet<Dependency>) {
-    if set.insert(dep.root.clone()) {
+fn flatten_dep_tree(dep: &DependencyTree, set: &mut BTreeSet<DependencyTree>) {
+    if set.insert(dep.clone()) {
         for dep in dep.children.values() {
             flatten_dep_tree(dep, set)
         }
@@ -247,7 +247,7 @@ fn flatten_dep_tree(dep: &DependencyTree, set: &mut BTreeSet<Dependency>) {
 
 pub fn flatten_dep_trees<'a>(
     deps: impl Iterator<Item = &'a DependencyTree>,
-) -> BTreeSet<Dependency> {
+) -> BTreeSet<DependencyTree> {
     let mut set = BTreeSet::default();
     for dep in deps {
         flatten_dep_tree(dep, &mut set);

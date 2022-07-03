@@ -135,7 +135,7 @@ async fn install() -> Result<(), color_eyre::Report> {
 
     PROGRESS_BAR.println(format!(
         "Installed {} packages in {}ms",
-        plan.flat_deps().len().yellow(),
+        plan.flat_dep_trees().len().yellow(),
         start.elapsed().as_millis().yellow()
     ));
 
@@ -185,7 +185,7 @@ async fn main() -> Result<()> {
 
             PROGRESS_BAR.println(format!(
                 "Prepared {} packages in {}ms",
-                plan.flat_deps().len().yellow(),
+                plan.flat_dep_trees().len().yellow(),
                 start.elapsed().as_millis().yellow()
             ));
         }
