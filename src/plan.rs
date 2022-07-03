@@ -39,14 +39,6 @@ impl Plan {
         Self { trees }
     }
 
-    pub fn flat_deps(&self) -> BTreeSet<Dependency> {
-        flat_dep_trees(&self.trees)
-            .values()
-            .cloned()
-            .map(|x| x.root)
-            .collect()
-    }
-
     pub fn satisfies(&self, package: &Package) -> bool {
         let map: FxHashMap<_, _> = self
             .trees
