@@ -11,7 +11,7 @@ use compact_str::{CompactString, ToCompactString};
 use futures::{future::try_join_all, StreamExt, TryStreamExt};
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -41,7 +41,8 @@ impl Plan {
 
     pub fn flat_deps(&self) -> BTreeSet<Dependency> {
         flat_dep_trees(&self.trees)
-            .into_iter()
+            .values()
+            .cloned()
             .map(|x| x.root)
             .collect()
     }
@@ -65,31 +66,27 @@ impl Plan {
 
 pub fn flatten(trees: &mut BTreeMap<CompactString, DependencyTree>) {
     let mut flat_deps = flat_dep_trees(trees);
-    let current_root_names: FxHashSet<_> = trees
-        .values()
-        .map(|x| x.root.name.to_compact_string())
-        .collect();
-    for dep in flat_deps.clone() {
-        if current_root_names.contains(&dep.root.name) {
-            flat_deps.remove(&dep);
+    for dep in flat_deps.clone().values() {
+        if trees.contains_key(&dep.root.name) {
+            flat_deps.remove(&dep.root);
         }
     }
     let mut hoisted: FxHashMap<_, DependencyTree> = FxHashMap::default();
-    for dep in flat_deps {
+    for dep in flat_deps.values() {
         if let Some(prev) = hoisted.get(&dep.root.name) {
             if dep.root.version > prev.root.version {
-                hoisted.insert(dep.root.name.to_compact_string(), dep);
+                hoisted.insert(dep.root.name.to_compact_string(), dep.clone());
             }
         } else {
-            hoisted.insert(dep.root.name.to_compact_string(), dep);
+            hoisted.insert(dep.root.name.to_compact_string(), dep.clone());
         }
     }
     for item in hoisted.values() {
         trees.insert(item.root.name.to_compact_string(), item.clone());
     }
-    let roots: BTreeSet<_> = trees.values().cloned().collect();
+    let roots = trees.values().cloned().map(|x| x.root).collect();
     for tree in trees.values_mut() {
-        *tree = tree.filter(&roots.iter().cloned().map(|x| x.root).collect());
+        *tree = tree.filter(&roots);
     }
     for tree in trees.values_mut() {
         let mut children = tree
@@ -105,7 +102,9 @@ pub fn flatten(trees: &mut BTreeMap<CompactString, DependencyTree>) {
     }
 }
 
-pub fn flat_dep_trees(trees: &BTreeMap<CompactString, DependencyTree>) -> BTreeSet<DependencyTree> {
+pub fn flat_dep_trees(
+    trees: &BTreeMap<CompactString, DependencyTree>,
+) -> FxHashMap<Dependency, DependencyTree> {
     flatten_dep_trees(trees.values())
 }
 

@@ -83,6 +83,7 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
             .map(|x| (x.root.name.to_compact_string(), (**x).clone()))
             .collect(),
     );
+
     flatten(&mut plan.trees);
 
     PROGRESS_BAR.set_message(format!("planned {} deps", plan.trees.len().yellow()));
