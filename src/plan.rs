@@ -141,11 +141,11 @@ pub async fn download_package_shared(dep: Dependency) -> Result<()> {
 }
 
 #[tracing::instrument]
-pub async fn extract_package(prefix: &[&str], dep: &Dependency) -> Result<()> {
+pub async fn extract_package(prefix: &[CompactString], dep: &Dependency) -> Result<()> {
     let mut target_path = PathBuf::new();
 
     for segment in prefix {
-        target_path.push(segment);
+        target_path.push(segment.as_str());
         target_path.push("node_modules");
     }
 
@@ -201,13 +201,18 @@ pub async fn extract_package(prefix: &[&str], dep: &Dependency) -> Result<()> {
 
 #[async_recursion]
 #[tracing::instrument]
-pub async fn extract_dep(prefix: &[&str], dep: &DependencyTree) -> Result<()> {
+pub async fn extract_dep(prefix: &[CompactString], dep: &DependencyTree) -> Result<()> {
     extract_package(prefix, &dep.root).await?;
 
     try_join_all(dep.children.values().map(|inner_dep| async {
         let mut prefix = prefix.to_vec();
-        prefix.push(&dep.root.name);
-        extract_dep(&prefix, inner_dep).await?;
+        prefix.push(dep.root.name.clone());
+
+        let inner_dep = inner_dep.clone();
+
+        tokio::spawn(async move { extract_dep(&prefix, &inner_dep).await })
+            .await
+            .unwrap()?;
 
         Ok(()) as Result<_>
     }))
