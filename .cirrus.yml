@@ -1,6 +1,10 @@
 task:
   container:
     dockerfile: Dockerfile
+    cpu: 8
+    greedy: true
+  registry_cache:
+    folder: $CARGO_HOME/registry
   target_cache:
     folder: target
   matrix:
