@@ -204,7 +204,7 @@ async fn main() -> Result<()> {
                 .as_object_mut()
                 .wrap_err("`package.json` is invalid")?
                 .get_mut("dependencies")
-                .wrap_err("`package.json` is missing `dependencies`")?
+                .unwrap_or(&mut Value::Object(Default::default()))
                 .as_object_mut()
                 .wrap_err("`package.json` contains invalid `dependencies`")?
                 .insert(name.to_string(), Value::String(format!("^{}", latest)));
