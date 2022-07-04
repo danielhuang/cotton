@@ -211,6 +211,8 @@ async fn main() -> Result<()> {
 
             save_package(&package).await?;
 
+            PROGRESS_BAR.println(format!("Added {} {}", name.yellow(), latest.yellow()));
+
             init_storage().await?;
 
             let start = Instant::now();
