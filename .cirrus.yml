@@ -1,0 +1,12 @@
+task:
+  container:
+    dockerfile: Dockerfile
+  target_cache:
+    folder: target
+  matrix:
+    - name: Build
+      build_script: cargo build --release
+    - name: Format
+      fmt_script: cargo fmt -- --check
+    - name: Clippy
+      clippy_script: cargo clippy
