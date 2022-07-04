@@ -207,9 +207,24 @@ async fn main() -> Result<()> {
                 .wrap_err("`package.json` is missing `dependencies`")?
                 .as_object_mut()
                 .wrap_err("`package.json` contains invalid `dependencies`")?
-                .insert(name.to_string(), Value::String(latest.to_string()));
+                .insert(name.to_string(), Value::String(format!("^{}", latest)));
 
             save_package(&package).await?;
+
+            init_storage().await?;
+
+            let start = Instant::now();
+
+            let package = read_package().await?;
+
+            let plan = prepare_plan(&package).await?;
+            write_json("cotton.lock", &plan).await?;
+
+            PROGRESS_BAR.println(format!(
+                "Prepared {} packages in {}ms",
+                tree_size(&plan.trees).yellow(),
+                start.elapsed().as_millis().yellow()
+            ));
         }
         Subcommand::Run { name } => {
             install().await?;
