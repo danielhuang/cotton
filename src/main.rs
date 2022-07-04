@@ -213,20 +213,7 @@ async fn main() -> Result<()> {
 
             PROGRESS_BAR.println(format!("Added {} {}", name.yellow(), latest.yellow()));
 
-            init_storage().await?;
-
-            let start = Instant::now();
-
-            let package = read_package().await?;
-
-            let plan = prepare_plan(&package).await?;
-            write_json("cotton.lock", &plan).await?;
-
-            PROGRESS_BAR.println(format!(
-                "Prepared {} packages in {}ms",
-                tree_size(&plan.trees).yellow(),
-                start.elapsed().as_millis().yellow()
-            ));
+            install().await?;
         }
         Subcommand::Run { name } => {
             install().await?;
