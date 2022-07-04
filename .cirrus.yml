@@ -10,7 +10,7 @@ task:
   matrix:
     - name: Build
       build_script: cargo build --release
-    - name: Format
-      fmt_script: cargo fmt -- --check
-    - name: Clippy
-      clippy_script: cargo clippy
+      binaries_artifacts:
+        path: target/release/cotton
+    - name: Check
+      script: cargo fmt -- --check && cargo clippy
