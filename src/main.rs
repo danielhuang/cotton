@@ -137,7 +137,7 @@ async fn install() -> Result<(), color_eyre::Report> {
 
     PROGRESS_BAR.println(format!(
         "Installed {} packages in {}ms",
-        tree_size(&plan.trees).yellow(),
+        tree_size(plan.trees.values()).yellow(),
         start.elapsed().as_millis().yellow()
     ));
 
@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
 
             PROGRESS_BAR.println(format!(
                 "Prepared {} packages in {}ms",
-                tree_size(&plan.trees).yellow(),
+                tree_size(plan.trees.values()).yellow(),
                 start.elapsed().as_millis().yellow()
             ));
         }

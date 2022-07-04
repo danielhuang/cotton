@@ -100,20 +100,10 @@ pub fn flat_dep_trees(
     flatten_dep_trees(trees.values())
 }
 
-pub fn tree_size_arc(trees: &BTreeMap<CompactString, Arc<DependencyTree>>) -> usize {
-    trees.len()
-        + trees
-            .values()
-            .map(|x| tree_size_arc(&x.children))
-            .sum::<usize>()
-}
-
-pub fn tree_size(trees: &BTreeMap<CompactString, DependencyTree>) -> usize {
-    trees.len()
-        + trees
-            .values()
-            .map(|x| tree_size_arc(&x.children))
-            .sum::<usize>()
+pub fn tree_size<'a>(trees: impl Iterator<Item = &'a DependencyTree>) -> usize {
+    trees
+        .map(|x| tree_size(x.children.values().map(|x| &**x)) + 1)
+        .sum::<usize>()
 }
 
 #[tracing::instrument]
