@@ -40,7 +40,7 @@ tokio = { version = "1.19.2", features = ["full"] }
 tokio-tar = { git = "https://github.com/baszalmstra/tokio-tar", rev = "2031b7890d343f621abd07bd73ee1467df37449f" }
 tracing = "0.1.35"
 tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.14", features = ["env-filter"] }
 
 [profile.dev]
 opt-level = 3
