@@ -4,12 +4,14 @@ mod package;
 mod plan;
 mod progress;
 mod util;
+mod watch;
 
 use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
+use futures_lite::future::race;
 use itertools::Itertools;
 use npm::fetch_package;
 use once_cell::sync::Lazy;
@@ -20,6 +22,7 @@ use std::{env, path::PathBuf, process::exit, time::Instant};
 use tikv_jemallocator::Jemalloc;
 use tokio::fs::create_dir_all;
 use tokio::{fs::read_to_string, process::Command};
+use watch::async_watch;
 
 use crate::{
     npm::fetch_dep,
@@ -48,7 +51,11 @@ pub enum Subcommand {
     /// Add package to package.json
     Add { name: CompactString },
     /// Run a script defined in package.json
-    Run { name: CompactString },
+    Run {
+        name: CompactString,
+        #[clap(long)]
+        watch: Vec<PathBuf>,
+    },
 }
 
 fn install_tracing() {
@@ -218,29 +225,51 @@ async fn main() -> Result<()> {
 
             install().await?;
         }
-        Subcommand::Run { name } => {
-            install().await?;
-            let package = read_package().await?;
-
-            let script = package
-                .scripts
-                .get(name)
-                .wrap_err(format!("Script `{}` is not defined", name))?
-                .as_str()
-                .wrap_err(format!("Script `{}` is not a string", name))?;
-
+        Subcommand::Run { name, watch } => {
             join_paths()?;
 
-            let exit_code = Command::new("sh")
-                .arg("-c")
-                .arg(script)
-                .spawn()?
-                .wait()
-                .await?
-                .code();
+            loop {
+                race(
+                    async {
+                        let event = async_watch(watch.iter().map(|x| x.as_ref())).await?;
+                        PROGRESS_BAR.println(format!(
+                            "{} File modified: {}",
+                            " WATCH ".on_purple(),
+                            event.paths[0].to_string_lossy()
+                        ));
+                        PROGRESS_BAR.finish_and_clear();
 
-            if let Some(exit_code) = exit_code {
-                exit(exit_code);
+                        Ok(())
+                    },
+                    async {
+                        let package = read_package().await?;
+
+                        let script = package
+                            .scripts
+                            .get(name)
+                            .wrap_err(format!("Script `{}` is not defined", name))?
+                            .as_str()
+                            .wrap_err(format!("Script `{}` is not a string", name))?;
+
+                        install().await?;
+
+                        let exit_code = Command::new("sh")
+                            .arg("-c")
+                            .arg(script)
+                            .kill_on_drop(true)
+                            .spawn()?
+                            .wait()
+                            .await?
+                            .code();
+
+                        if let Some(exit_code) = exit_code {
+                            exit(exit_code);
+                        }
+
+                        Ok(()) as Result<_>
+                    },
+                )
+                .await?;
             }
         }
     }
