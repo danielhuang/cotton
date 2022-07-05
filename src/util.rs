@@ -10,9 +10,8 @@ use reqwest::{Client, ClientBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
-pub static CLIENT2: Lazy<Client> = Lazy::new(|| {
+pub static CLIENT_Z: Lazy<Client> = Lazy::new(|| {
     ClientBuilder::new()
-        .http2_prior_knowledge()
         .brotli(true)
         .gzip(true)
         .deflate(true)
@@ -30,25 +29,25 @@ pub fn decode_json<T: DeserializeOwned>(
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 #[serde(untagged)]
-pub enum PartialRange {
+pub enum VersionReq {
     Range(Range),
-    Oops(CompactString),
+    Other(CompactString),
 }
 
-impl PartialRange {
+impl VersionReq {
     pub fn satisfies(&self, v: &Version) -> bool {
         match self {
-            PartialRange::Range(r) => r.satisfies(v),
-            PartialRange::Oops(_) => false,
+            VersionReq::Range(r) => r.satisfies(v),
+            VersionReq::Other(_) => false,
         }
     }
 }
 
-impl Display for PartialRange {
+impl Display for VersionReq {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PartialRange::Range(a) => a.fmt(f),
-            PartialRange::Oops(a) => a.fmt(f),
+            VersionReq::Range(a) => a.fmt(f),
+            VersionReq::Other(a) => a.fmt(f),
         }
     }
 }

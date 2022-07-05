@@ -25,8 +25,8 @@ use crate::{
     cache::Cache,
     package::{DepReq, Dist, Package},
     plan::download_package_shared,
-    progress::PROGRESS_BAR,
-    util::{decode_json, get_node_cpu, get_node_os, CLIENT2},
+    progress::{log_verbose, PROGRESS_BAR},
+    util::{decode_json, get_node_cpu, get_node_os, VersionReq, CLIENT_Z},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -66,11 +66,11 @@ impl PlatformMap {
 
 #[tracing::instrument]
 pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(512));
     let _permit = S.acquire().await.unwrap();
 
     decode_json(
-        &CLIENT2
+        &CLIENT_Z
             .get(format!("https://registry.npmjs.org/{}", name))
             .send()
             .await?
@@ -83,7 +83,7 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
 pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
     static CACHE: Lazy<Cache<CompactString, Result<Arc<RegistryResponse>, CompactString>>> =
         Lazy::new(|| {
-            Cache::new(|key: CompactString| async move {
+            Cache::new(|key: CompactString, _| async move {
                 fetch_package(&key)
                     .await
                     .map(Arc::new)
@@ -92,7 +92,7 @@ pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
         });
 
     CACHE
-        .get(name.to_compact_string())
+        .get(name.to_compact_string(), ())
         .await
         .map_err(Report::msg)
 }
@@ -101,14 +101,39 @@ pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
 #[cached(result)]
 async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
     let res = fetch_package_cached(&d.name).await?;
-    let (version, package) = res
-        .versions
-        .iter()
-        .sorted_by_key(|(v, _)| !v.is_prerelease())
-        .rfind(|(v, _)| d.version.satisfies(v))
-        .wrap_err("Version cannot be satisfied")?;
 
-    Ok((version.clone(), package.clone()))
+    if let VersionReq::Other(tag) = &d.version {
+        let tag = res
+            .dist_tags
+            .get(tag)
+            .wrap_err_with(|| eyre!("Version cannot be satisfied: {} {}", d.name, d.version))?;
+        let version: Version = tag.parse()?;
+        let package = res.versions.get(&version).wrap_err_with(|| {
+            eyre!(
+                "Tag refers to a version that does not exist: {} - {} refers to {}",
+                d.name,
+                d.version,
+                version
+            )
+        })?;
+
+        Ok((version, package.clone()))
+    } else {
+        let (version, package) = res
+            .versions
+            .iter()
+            .sorted_by_key(|(v, _)| !v.is_prerelease())
+            .rfind(|(v, _)| d.version.satisfies(v))
+            .wrap_err_with(|| {
+                eyre!(
+                    "Version cannot be satisfied: expected {} {}",
+                    d.name,
+                    d.version
+                )
+            })?;
+
+        Ok((version.clone(), package.clone()))
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Debug)]
@@ -171,6 +196,16 @@ pub async fn fetch_dep(
         return Ok(None);
     }
 
+    log_verbose(&format!(
+        "{} > {} {}",
+        stack
+            .iter()
+            .map(|(r, v)| format!("{}@{}", r.name, v))
+            .join(&" > ".bold().to_string()),
+        d.name,
+        d.version
+    ));
+
     let (version, package) = fetch_dep_single(d.clone()).await?;
 
     if !package.os.is_supported(get_node_os()) || !package.cpu.is_supported(get_node_cpu()) {
@@ -219,22 +254,25 @@ pub async fn fetch_dep(
     Ok(Some(Arc::new(tree)))
 }
 
-pub async fn fetch_dep_cached(
-    d: DepReq,
-    stack: Vec<(DepReq, Version)>,
-) -> Result<Option<Arc<DependencyTree>>> {
-    type Args = (DepReq, Vec<(DepReq, Version)>);
+type DepStack = Vec<(DepReq, Version)>;
+
+#[tracing::instrument]
+pub async fn fetch_dep_cached(d: DepReq, stack: DepStack) -> Result<Option<Arc<DependencyTree>>> {
+    type Args = (DepReq, Option<DepReq>);
     type Output = Option<Arc<DependencyTree>>;
 
-    static CACHE: Lazy<Cache<Args, Result<Output, CompactString>>> = Lazy::new(|| {
-        Cache::new(|(d, stack): Args| async move {
+    static CACHE: Lazy<Cache<Args, Result<Output, CompactString>, DepStack>> = Lazy::new(|| {
+        Cache::new(|(d, _parent): Args, stack: DepStack| async move {
             fetch_dep(&d, &stack)
                 .await
                 .map_err(|e| e.to_compact_string())
         })
     });
 
-    CACHE.get((d, stack)).await.map_err(Report::msg)
+    CACHE
+        .get((d, stack.last().map(|x| x.0.clone())), stack)
+        .await
+        .map_err(Report::msg)
 }
 
 fn flatten_dep_tree(dep: &DependencyTree, map: &mut FxHashMap<Dependency, DependencyTree>) {

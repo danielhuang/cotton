@@ -21,8 +21,8 @@ use crate::{
     cache::Cache,
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
-    progress::PROGRESS_BAR,
-    util::{PartialRange, CLIENT},
+    progress::{log_verbose, log_warning, PROGRESS_BAR},
+    util::{VersionReq, CLIENT},
 };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -43,7 +43,7 @@ impl Plan {
             .collect();
         package.iter_with_dev().all(|req| {
             if let Some(version) = map.get(&req.name) {
-                if let PartialRange::Range(range) = req.version {
+                if let VersionReq::Range(range) = req.version {
                     return version.satisfies(&range);
                 }
             }
@@ -117,6 +117,8 @@ async fn download_package(dep: &Dependency) -> Result<()> {
     static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
     let _permit = S.acquire().await.unwrap();
 
+    log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
+
     let target_path = scoped_join("node_modules/.cotton/tar", dep.tar())?;
     let target_part_path = scoped_join("node_modules/.cotton/tar", dep.tar_part())?;
 
@@ -147,14 +149,14 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 
 pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     static CACHE: Lazy<Cache<Dependency, Result<(), CompactString>>> = Lazy::new(|| {
-        Cache::new(|key: Dependency| async move {
+        Cache::new(|key: Dependency, _| async move {
             download_package(&key)
                 .await
                 .map_err(|e| e.to_compact_string())
         })
     });
 
-    CACHE.get(dep).await.map_err(Report::msg)
+    CACHE.get(dep, ()).await.map_err(Report::msg)
 }
 
 #[tracing::instrument]
@@ -169,6 +171,8 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
     }
 
     target_path.push(&*dep.name);
+
+    log_verbose(&format!("Installing {}", target_path.to_string_lossy()));
 
     target_path = scoped_join("node_modules", target_path)?;
 
@@ -187,12 +191,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
         )?;
         create_dir_all(&target_file.parent().unwrap()).await?;
         if let Err(e) = file.unpack(&target_file).await {
-            PROGRESS_BAR.println(format!(
-                "{} ({}) {}",
-                " Warning ".on_yellow(),
-                dep.id().bright_blue(),
-                e
-            ));
+            log_warning(&format!("({}) {}", dep.id().bright_blue(), e));
         }
     }
 
@@ -241,11 +240,11 @@ pub async fn install_dep_tree(prefix: &[CompactString], dep: &DependencyTree) ->
 }
 
 pub async fn execute_plan(plan: &Plan) -> Result<()> {
-    try_join_all(
-        plan.trees
-            .values()
-            .map(|x| async move { install_dep_tree(&[], x).await }),
-    )
+    try_join_all(plan.trees.values().cloned().map(|x| async move {
+        tokio::spawn(async move { install_dep_tree(&[], &x).await })
+            .await
+            .unwrap()
+    }))
     .await?;
 
     Ok(())

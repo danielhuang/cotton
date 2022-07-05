@@ -12,6 +12,7 @@ use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
 use itertools::Itertools;
 use npm::fetch_package;
+use once_cell::sync::Lazy;
 use package::{read_package, read_package_as_value, save_package, write_json, Package};
 use plan::{flatten, tree_size};
 use serde_json::Value;
@@ -31,13 +32,15 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
-struct Args {
+pub struct Args {
+    #[clap(short, long)]
+    verbose: bool,
     #[clap(subcommand)]
     cmd: Subcommand,
 }
 
-#[derive(Parser, Debug)]
-enum Subcommand {
+#[derive(Parser, Debug, Clone)]
+pub enum Subcommand {
     /// Install packages defined in package.json
     Install,
     /// Prepare and save a newly planned lockfile
@@ -164,14 +167,14 @@ pub async fn init_storage() -> Result<()> {
     Ok(())
 }
 
+pub static ARGS: Lazy<Args> = Lazy::new(Args::parse);
+
 #[tokio::main]
 async fn main() -> Result<()> {
     install_tracing();
     color_eyre::install()?;
 
-    let args = Args::parse();
-
-    match args.cmd {
+    match &ARGS.cmd {
         Subcommand::Install => {
             install().await?;
         }
@@ -194,7 +197,7 @@ async fn main() -> Result<()> {
         Subcommand::Add { name } => {
             let mut package = read_package_as_value().await?;
 
-            let res = fetch_package(&name).await?;
+            let res = fetch_package(name).await?;
             let latest = res
                 .dist_tags
                 .get("latest")
@@ -221,7 +224,7 @@ async fn main() -> Result<()> {
 
             let script = package
                 .scripts
-                .get(&name)
+                .get(name)
                 .wrap_err(format!("Script `{}` is not defined", name))?
                 .as_str()
                 .wrap_err(format!("Script `{}` is not a string", name))?;

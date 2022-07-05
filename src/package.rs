@@ -10,7 +10,7 @@ use tokio::{
     io::AsyncWriteExt,
 };
 
-use crate::{npm::PlatformMap, util::PartialRange};
+use crate::{npm::PlatformMap, util::VersionReq};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
@@ -19,9 +19,9 @@ pub struct Package {
     pub name: Option<CompactString>,
     pub bin: Option<Bin>,
     pub dist: Dist,
-    pub dependencies: FxHashMap<CompactString, PartialRange>,
-    pub optional_dependencies: FxHashMap<CompactString, PartialRange>,
-    pub dev_dependencies: FxHashMap<CompactString, PartialRange>,
+    pub dependencies: FxHashMap<CompactString, VersionReq>,
+    pub optional_dependencies: FxHashMap<CompactString, VersionReq>,
+    pub dev_dependencies: FxHashMap<CompactString, VersionReq>,
     pub os: PlatformMap,
     pub cpu: PlatformMap,
     pub scripts: FxHashMap<CompactString, Value>,
@@ -62,7 +62,7 @@ pub struct Dist {
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct DepReq {
     pub name: CompactString,
-    pub version: PartialRange,
+    pub version: VersionReq,
     pub optional: bool,
 }
 
