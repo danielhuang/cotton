@@ -11,8 +11,11 @@ use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
+use futures::lock::Mutex;
 use futures_lite::future::race;
 use itertools::Itertools;
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 use npm::fetch_package;
 use once_cell::sync::Lazy;
 use package::{read_package, read_package_as_value, save_package, write_json, Package};
@@ -229,6 +232,8 @@ async fn main() -> Result<()> {
             join_paths()?;
 
             loop {
+                let child_pid = Mutex::new(None);
+
                 race(
                     async {
                         let event = async_watch(watch.iter().map(|x| x.as_ref())).await?;
@@ -253,14 +258,11 @@ async fn main() -> Result<()> {
 
                         install().await?;
 
-                        let exit_code = Command::new("sh")
-                            .arg("-c")
-                            .arg(script)
-                            .kill_on_drop(true)
-                            .spawn()?
-                            .wait()
-                            .await?
-                            .code();
+                        let mut child = Command::new("sh").arg("-c").arg(script).spawn()?;
+
+                        *child_pid.lock().await = child.id();
+
+                        let exit_code = child.wait().await?.code();
 
                         if let Some(exit_code) = exit_code {
                             exit(exit_code);
@@ -270,6 +272,11 @@ async fn main() -> Result<()> {
                     },
                 )
                 .await?;
+
+                let pid = *child_pid.lock().await;
+                if let Some(pid) = pid {
+                    signal::kill(Pid::from_raw(pid as _), Signal::SIGTERM)?;
+                }
             }
         }
     }
