@@ -21,7 +21,7 @@ itertools = "0.10.3"
 multimap = "0.8.3"
 nix = "0.24.1"
 node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "845a725abb38b5b9cc9910e29cf2dddc06c606b8" }
-notify = "5.0.0-pre.11"
+notify = "5.0.0-pre.15"
 once_cell = "1.13.0"
 owo-colors = "3.4.0"
 reqwest = { version = "0.11.11", features = [
