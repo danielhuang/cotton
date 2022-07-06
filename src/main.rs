@@ -275,7 +275,7 @@ async fn main() -> Result<()> {
 
                 let pid = *child_pid.lock().await;
                 if let Some(pid) = pid {
-                    signal::kill(Pid::from_raw(pid as _), Signal::SIGTERM)?;
+                    signal::kill(Pid::from_raw(pid as _), Signal::SIGINT)?;
                 }
             }
         }
