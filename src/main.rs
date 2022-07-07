@@ -53,7 +53,7 @@ pub enum Subcommand {
     /// Prepare and save a newly planned lockfile
     Update,
     /// Add package to package.json
-    Add { name: CompactString },
+    Add { names: Vec<CompactString> },
     /// Run a script defined in package.json
     Run {
         name: CompactString,
@@ -205,27 +205,34 @@ async fn main() -> Result<()> {
                 start.elapsed().as_millis().yellow()
             ));
         }
-        Subcommand::Add { name } => {
+        Subcommand::Add { names } => {
+            if names.is_empty() {
+                PROGRESS_BAR.println("Note: no packages specified");
+            }
+
             let mut package = read_package_as_value().await?;
 
-            let res = fetch_package(name).await?;
-            let latest = res
-                .dist_tags
-                .get("latest")
-                .wrap_err("Package `latest` tag not specified")?;
-
-            package
+            let dependencies = package
                 .as_object_mut()
                 .wrap_err("`package.json` is invalid")?
                 .get_mut("dependencies")
                 .wrap_err("`package.json` is missing `dependencies`")?
                 .as_object_mut()
-                .wrap_err("`package.json` contains invalid `dependencies`")?
-                .insert(name.to_string(), Value::String(format!("^{}", latest)));
+                .wrap_err("`package.json` contains invalid `dependencies`")?;
+
+            for name in names {
+                let res = fetch_package(name).await?;
+                let latest = res
+                    .dist_tags
+                    .get("latest")
+                    .wrap_err("Package `latest` tag not specified")?;
+
+                dependencies.insert(name.to_string(), Value::String(format!("^{}", latest)));
+
+                PROGRESS_BAR.println(format!("Added {} {}", name.yellow(), latest.yellow()));
+            }
 
             save_package(&package).await?;
-
-            PROGRESS_BAR.println(format!("Added {} {}", name.yellow(), latest.yellow()));
 
             install().await?;
         }
