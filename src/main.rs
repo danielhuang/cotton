@@ -20,6 +20,7 @@ use npm::fetch_package;
 use once_cell::sync::Lazy;
 use package::{read_package, read_package_as_value, save_package, write_json, Package};
 use plan::{flatten, tree_size};
+use progress::log_progress;
 use serde_json::Value;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tikv_jemallocator::Jemalloc;
@@ -89,7 +90,7 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     .flatten()
     .collect_vec();
 
-    PROGRESS_BAR.set_message(format!("fetched {} root deps", deps.len().yellow()));
+    log_progress(&format!("fetched {} root deps", deps.len().yellow()));
 
     let mut plan = Plan::new(
         deps.iter()
@@ -99,7 +100,7 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
 
     flatten(&mut plan.trees);
 
-    PROGRESS_BAR.set_message(format!("planned {} deps", plan.trees.len().yellow()));
+    log_progress(&format!("planned {} deps", plan.trees.len().yellow()));
 
     Ok(plan)
 }
@@ -171,7 +172,7 @@ fn join_paths() -> Result<()> {
 }
 
 pub async fn init_storage() -> Result<()> {
-    create_dir_all("node_modules/.cotton/tar").await?;
+    create_dir_all("node_modules/.cotton/store").await?;
     create_dir_all("node_modules/.bin").await?;
 
     Ok(())

@@ -25,7 +25,7 @@ use crate::{
     cache::Cache,
     package::{DepReq, Dist, Package},
     plan::download_package_shared,
-    progress::{log_verbose, PROGRESS_BAR},
+    progress::{log_progress, log_verbose},
     util::{decode_json, get_node_cpu, get_node_os, VersionReq, CLIENT_Z},
 };
 
@@ -174,14 +174,6 @@ impl Dependency {
     pub fn id(&self) -> String {
         format!("{}@{}", self.name, self.version)
     }
-
-    pub fn tar(&self) -> String {
-        format!("{}.tar", self.id())
-    }
-
-    pub fn tar_part(&self) -> String {
-        format!("{}.tar.part", self.id())
-    }
 }
 
 #[async_recursion]
@@ -234,7 +226,7 @@ pub async fn fetch_dep(
     .into_iter()
     .flatten();
 
-    PROGRESS_BAR.set_message(format!("fetched {}", d.name.bright_blue()));
+    log_progress(&format!("fetched {}", d.name.bright_blue()));
 
     let tree = DependencyTree {
         children: deps

@@ -1,27 +1,34 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use async_compression::tokio::write::GzipDecoder;
+use async_compression::tokio::bufread::GzipDecoder;
 use async_recursion::async_recursion;
 use color_eyre::{eyre::Result, Report};
 use compact_str::{CompactString, ToCompactString};
-use futures::{future::try_join_all, StreamExt, TryStreamExt};
+use futures::{future::try_join_all, TryStreamExt};
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use tokio::{
-    fs::{create_dir_all, metadata, remove_dir_all, remove_file, rename, symlink, File},
-    io::AsyncWriteExt,
+    fs::{
+        create_dir_all, hard_link, metadata, read_dir, remove_dir_all, remove_file, symlink, File,
+    },
     sync::Semaphore,
 };
 use tokio_tar::Archive;
+use tokio_util::io::StreamReader;
 
 use crate::{
     cache::Cache,
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
-    progress::{log_verbose, log_warning, PROGRESS_BAR},
+    progress::{log_progress, log_verbose},
     util::{VersionReq, CLIENT},
 };
 
@@ -114,35 +121,39 @@ pub fn tree_size(trees: &BTreeMap<CompactString, DependencyTree>) -> usize {
 
 #[tracing::instrument]
 async fn download_package(dep: &Dependency) -> Result<()> {
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
-    let _permit = S.acquire().await.unwrap();
-
     log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
 
-    let target_path = scoped_join("node_modules/.cotton/tar", dep.tar())?;
-    let target_part_path = scoped_join("node_modules/.cotton/tar", dep.tar_part())?;
+    let target_path = scoped_join("node_modules/.cotton/store", dep.id())?;
 
-    create_dir_all(target_part_path.parent().unwrap()).await?;
+    create_dir_all(&target_path).await?;
 
-    if metadata(&target_path).await.is_ok() {
+    if metadata(&target_path.join("_complete")).await.is_ok() {
+        log_verbose(&format!("Skipped downloading {}", dep.id()));
         return Ok(());
     }
 
-    let mut res = CLIENT.get(&*dep.dist.tarball).send().await?.bytes_stream();
-    let target = File::create(&target_part_path).await?;
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
+    let permit = S.acquire().await.unwrap();
 
-    let mut target = GzipDecoder::new(target);
+    let res = CLIENT
+        .get(&*dep.dist.tarball)
+        .send()
+        .await?
+        .bytes_stream()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
 
-    while let Some(bytes) = res.next().await {
-        let mut bytes = bytes?;
-        target.write_all_buf(&mut bytes).await?;
-    }
+    let reader = StreamReader::new(res);
+    let reader = GzipDecoder::new(reader);
 
-    target.flush().await?;
+    let mut archive = Archive::new(reader);
 
-    rename(&target_part_path, &target_path).await?;
+    drop(permit);
 
-    PROGRESS_BAR.set_message(format!("downloaded {}", dep.id().bright_blue()));
+    archive.unpack(&target_path).await?;
+
+    File::create(&target_path.join("_complete")).await?;
+
+    log_progress(&format!("downloaded {}", dep.id().bright_blue()));
 
     Ok(())
 }
@@ -157,6 +168,32 @@ pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     });
 
     CACHE.get(dep, ()).await.map_err(Report::msg)
+}
+
+#[async_recursion]
+async fn hardlink_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    create_dir_all(&dst).await?;
+    let mut dir = read_dir(src).await?;
+    while let Some(entry) = dir.next_entry().await? {
+        let ty = entry.file_type().await?;
+        if ty.is_dir() {
+            hardlink_dir(&entry.path(), &dst.join(entry.file_name())).await?;
+        } else {
+            hard_link(entry.path(), &dst.join(entry.file_name())).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn get_package_src(src: &Path) -> Result<PathBuf> {
+    let mut dir = read_dir(src).await?;
+    while let Some(entry) = dir.next_entry().await? {
+        let ty = entry.file_type().await?;
+        if ty.is_dir() {
+            return Ok(entry.path());
+        }
+    }
+    Err(Report::msg("No package src found"))
 }
 
 #[tracing::instrument]
@@ -177,23 +214,10 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
     target_path = scoped_join("node_modules", target_path)?;
 
     let _ = remove_dir_all(&target_path).await;
-    create_dir_all(&target_path).await?;
 
-    let mut a =
-        Archive::new(File::open(scoped_join("node_modules/.cotton/tar", dep.tar())?).await?);
+    let src_path = scoped_join("node_modules/.cotton/store", dep.id())?;
 
-    let mut entries = a.entries()?;
-
-    while let Some(mut file) = entries.try_next().await? {
-        let target_file = scoped_join(
-            &target_path,
-            file.path()?.components().skip(1).collect::<PathBuf>(),
-        )?;
-        create_dir_all(&target_file.parent().unwrap()).await?;
-        if let Err(e) = file.unpack(&target_file).await {
-            log_warning(&format!("({}) {}", dep.id().bright_blue(), e));
-        }
-    }
+    hardlink_dir(&get_package_src(&src_path).await?, &target_path).await?;
 
     if prefix.is_empty() {
         for (cmd, path) in &dep.bins {
@@ -212,7 +236,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
         }
     }
 
-    PROGRESS_BAR.set_message(format!("installed {}", dep.id().bright_blue()));
+    log_progress(&format!("installed {}", dep.id().bright_blue()));
 
     Ok(())
 }
