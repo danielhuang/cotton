@@ -16,7 +16,7 @@ use futures_lite::future::race;
 use itertools::Itertools;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
-use npm::fetch_package;
+use npm::{fetch_dep_cached, fetch_package};
 use once_cell::sync::Lazy;
 use package::{read_package, read_package_as_value, save_package, write_json, Package};
 use plan::{flatten, tree_size};
@@ -29,7 +29,6 @@ use tokio::{fs::read_to_string, process::Command};
 use watch::async_watch;
 
 use crate::{
-    npm::fetch_dep,
     plan::{execute_plan, Plan},
     progress::PROGRESS_BAR,
 };
@@ -83,14 +82,14 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     let deps = try_join_all(
         package
             .iter_with_dev()
-            .map(|d| async move { fetch_dep(&d, &[]).await }),
+            .map(|d| async move { fetch_dep_cached(d, vec![]).await }),
     )
     .await?
     .into_iter()
     .flatten()
     .collect_vec();
 
-    log_progress(&format!("fetched {} root deps", deps.len().yellow()));
+    log_progress(&format!("Fetched {} root deps", deps.len().yellow()));
 
     let mut plan = Plan::new(
         deps.iter()
@@ -100,7 +99,10 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
 
     flatten(&mut plan.trees);
 
-    log_progress(&format!("planned {} deps", plan.trees.len().yellow()));
+    log_progress(&format!(
+        "Planned {} dependencies",
+        plan.trees.len().yellow()
+    ));
 
     Ok(plan)
 }

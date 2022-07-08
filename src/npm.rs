@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    convert::identity,
     sync::Arc,
 };
 
@@ -66,7 +67,7 @@ impl PlatformMap {
 
 #[tracing::instrument]
 pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(512));
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
     let _permit = S.acquire().await.unwrap();
 
     decode_json(
@@ -142,6 +143,12 @@ pub struct DependencyTree {
     pub children: BTreeMap<CompactString, Arc<DependencyTree>>,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Debug)]
+pub struct PartialDependencyTree {
+    pub root: Dependency,
+    pub children: BTreeMap<CompactString, Dependency>,
+}
+
 impl DependencyTree {
     pub fn filter(&self, exclude: &FxHashSet<Dependency>) -> Self {
         Self {
@@ -181,23 +188,6 @@ pub async fn fetch_dep(
     d: &DepReq,
     stack: &[(DepReq, Version)],
 ) -> Result<Option<Arc<DependencyTree>>> {
-    if stack
-        .iter()
-        .any(|(d2, v)| d.name == d2.name && d.version.satisfies(v))
-    {
-        return Ok(None);
-    }
-
-    log_verbose(&format!(
-        "{} > {} {}",
-        stack
-            .iter()
-            .map(|(r, v)| format!("{}@{}", r.name, v))
-            .join(&" > ".bold().to_string()),
-        d.name,
-        d.version
-    ));
-
     let (version, package) = fetch_dep_single(d.clone()).await?;
 
     if !package.os.is_supported(get_node_os()) || !package.cpu.is_supported(get_node_cpu()) {
@@ -207,6 +197,8 @@ pub async fn fetch_dep(
             return Err(Report::msg("Required dependency is not supported"));
         }
     }
+
+    log_progress(&format!("Fetched {}", d.name.bright_blue()));
 
     let deps = try_join_all(package.iter().map(|d2| {
         let version = version.clone();
@@ -225,8 +217,6 @@ pub async fn fetch_dep(
     .await?
     .into_iter()
     .flatten();
-
-    log_progress(&format!("fetched {}", d.name.bright_blue()));
 
     let tree = DependencyTree {
         children: deps
@@ -248,23 +238,37 @@ pub async fn fetch_dep(
 
 type DepStack = Vec<(DepReq, Version)>;
 
-#[tracing::instrument]
 pub async fn fetch_dep_cached(d: DepReq, stack: DepStack) -> Result<Option<Arc<DependencyTree>>> {
-    type Args = (DepReq, Option<DepReq>);
+    type Args = (DepReq, DepStack);
     type Output = Option<Arc<DependencyTree>>;
 
-    static CACHE: Lazy<Cache<Args, Result<Output, CompactString>, DepStack>> = Lazy::new(|| {
-        Cache::new(|(d, _parent): Args, stack: DepStack| async move {
-            fetch_dep(&d, &stack)
+    static CACHE: Lazy<Cache<Args, Result<Output, CompactString>, ()>> = Lazy::new(|| {
+        Cache::new(|(d, stack): Args, _| async move {
+            tokio::spawn(async move { fetch_dep(&d, &stack).await })
                 .await
                 .map_err(|e| e.to_compact_string())
+                .and_then(|r| r.map_err(|e| e.to_compact_string()))
         })
     });
 
-    CACHE
-        .get((d, stack.last().map(|x| x.0.clone())), stack)
-        .await
-        .map_err(Report::msg)
+    if stack
+        .iter()
+        .any(|(d2, v)| d.name == d2.name && d.version.satisfies(v))
+    {
+        log_verbose(&format!(
+            "Detected cyclic dependencies: {} > {} {}",
+            stack
+                .iter()
+                .map(|(r, v)| format!("{}@{}", r.name, v).bright_blue().to_string())
+                .join(" > "),
+            d.name,
+            d.version
+        ));
+
+        return Ok(None);
+    }
+
+    CACHE.get((d, stack), ()).await.map_err(Report::msg)
 }
 
 fn flatten_dep_tree(dep: &DependencyTree, map: &mut FxHashMap<Dependency, DependencyTree>) {

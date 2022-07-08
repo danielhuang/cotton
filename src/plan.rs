@@ -19,6 +19,7 @@ use tokio::{
     fs::{
         create_dir_all, hard_link, metadata, read_dir, remove_dir_all, remove_file, symlink, File,
     },
+    io::BufReader,
     sync::Semaphore,
 };
 use tokio_tar::Archive;
@@ -121,8 +122,6 @@ pub fn tree_size(trees: &BTreeMap<CompactString, DependencyTree>) -> usize {
 
 #[tracing::instrument]
 async fn download_package(dep: &Dependency) -> Result<()> {
-    log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
-
     let target_path = scoped_join("node_modules/.cotton/store", dep.id())?;
 
     create_dir_all(&target_path).await?;
@@ -135,6 +134,8 @@ async fn download_package(dep: &Dependency) -> Result<()> {
     static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
     let permit = S.acquire().await.unwrap();
 
+    log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
+
     let res = CLIENT
         .get(&*dep.dist.tarball)
         .send()
@@ -143,6 +144,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
 
     let reader = StreamReader::new(res);
+    let reader = BufReader::with_capacity(4 * 1024 * 1024, reader);
     let reader = GzipDecoder::new(reader);
 
     let mut archive = Archive::new(reader);
@@ -153,7 +155,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 
     File::create(&target_path.join("_complete")).await?;
 
-    log_progress(&format!("downloaded {}", dep.id().bright_blue()));
+    log_progress(&format!("Downloaded {}", dep.id().bright_blue()));
 
     Ok(())
 }
@@ -236,7 +238,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
         }
     }
 
-    log_progress(&format!("installed {}", dep.id().bright_blue()));
+    log_progress(&format!("Installed {}", dep.id().bright_blue()));
 
     Ok(())
 }
