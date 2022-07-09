@@ -134,7 +134,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         return Ok(());
     }
 
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(48));
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
     let permit = S.acquire().await.unwrap();
 
     log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
