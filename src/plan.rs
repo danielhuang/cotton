@@ -7,7 +7,10 @@ use std::{
 
 use async_compression::tokio::bufread::GzipDecoder;
 use async_recursion::async_recursion;
-use color_eyre::{eyre::Result, Report};
+use color_eyre::{
+    eyre::{eyre, Result},
+    Report,
+};
 use compact_str::{CompactString, ToCompactString};
 use futures::{future::try_join_all, TryStreamExt};
 use once_cell::sync::Lazy;
@@ -151,7 +154,10 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 
     drop(permit);
 
-    archive.unpack(&target_path).await?;
+    archive
+        .unpack(&target_path)
+        .await
+        .map_err(|e| eyre!("{e:?}"))?;
 
     File::create(&target_path.join("_complete")).await?;
 
