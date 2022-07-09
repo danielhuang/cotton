@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    convert::identity,
     sync::Arc,
 };
 

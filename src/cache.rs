@@ -63,9 +63,4 @@ impl<
 
         f.0.await
     }
-
-    pub async fn get_meta(&self, key: &K) -> Option<M> {
-        let map = self.map.lock().await;
-        Some(map.get(key)?.1.clone())
-    }
 }
