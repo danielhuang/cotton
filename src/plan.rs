@@ -19,11 +19,10 @@ use rustc_hash::FxHashMap;
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use tokio::{
-    fs::{
-        create_dir_all, hard_link, metadata, read_dir, remove_dir_all, remove_file, symlink, File,
-    },
+    fs::{create_dir_all, metadata, read_dir, remove_dir_all, remove_file, symlink, File},
     io::BufReader,
     sync::Semaphore,
+    task::spawn_blocking,
 };
 use tokio_tar::Archive;
 use tokio_util::io::StreamReader;
@@ -32,7 +31,7 @@ use crate::{
     cache::Cache,
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
-    progress::{log_progress, log_verbose},
+    progress::{log_progress, log_verbose, log_warning},
     util::{VersionReq, CLIENT},
 };
 
@@ -179,18 +178,23 @@ pub async fn download_package_shared(dep: Dependency) -> Result<()> {
 }
 
 #[async_recursion]
-async fn hardlink_dir(src: &Path, dst: &Path) -> io::Result<()> {
-    create_dir_all(&dst).await?;
-    let mut dir = read_dir(src).await?;
-    while let Some(entry) = dir.next_entry().await? {
-        let ty = entry.file_type().await?;
-        if ty.is_dir() {
-            hardlink_dir(&entry.path(), &dst.join(entry.file_name())).await?;
-        } else {
-            hard_link(entry.path(), &dst.join(entry.file_name())).await?;
+async fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
+    fn hardlink_dir_sync(src: PathBuf, dst: PathBuf) -> io::Result<()> {
+        std::fs::create_dir_all(&dst)?;
+        let dir = std::fs::read_dir(src)?;
+        for entry in dir {
+            let entry = entry?;
+            let ty = entry.file_type()?;
+            if ty.is_dir() {
+                hardlink_dir_sync(entry.path(), dst.join(entry.file_name()))?;
+            } else {
+                std::fs::hard_link(entry.path(), &dst.join(entry.file_name()))?;
+            }
         }
+        Ok(())
     }
-    Ok(())
+
+    Ok(spawn_blocking(move || hardlink_dir_sync(src, dst)).await??)
 }
 
 async fn get_package_src(src: &Path) -> Result<PathBuf> {
@@ -225,7 +229,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
 
     let src_path = scoped_join("node_modules/.cotton/store", dep.id())?;
 
-    hardlink_dir(&get_package_src(&src_path).await?, &target_path).await?;
+    hardlink_dir(get_package_src(&src_path).await?, target_path).await?;
 
     if prefix.is_empty() {
         for (cmd, path) in &dep.bins {
@@ -239,7 +243,12 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
             }
             if !cmd.contains('/') {
                 let _ = remove_file(PathBuf::from("node_modules/.bin").join(&**cmd)).await;
-                symlink(&path, PathBuf::from("node_modules/.bin").join(&**cmd)).await?;
+                if symlink(&path, PathBuf::from("node_modules/.bin").join(&**cmd))
+                    .await
+                    .is_err()
+                {
+                    log_warning(&format!("Unable to save binary: {}", cmd));
+                }
             }
         }
     }

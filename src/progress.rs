@@ -21,6 +21,10 @@ pub fn log_verbose(text: &str) {
     }
 }
 
+pub fn log_warning(text: &str) {
+    PROGRESS_BAR.println(format!("{} {}", " WARNING ".on_yellow(), text));
+}
+
 pub fn log_progress(text: &str) {
     PROGRESS_BAR.set_message(text.to_string());
     log_verbose(text);
