@@ -37,6 +37,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Plan {
+    #[serde(flatten)]
     pub trees: BTreeMap<CompactString, DependencyTree>,
 }
 

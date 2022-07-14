@@ -138,6 +138,7 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Debug)]
 pub struct DependencyTree {
+    #[serde(flatten)]
     pub root: Dependency,
     pub children: BTreeMap<CompactString, Arc<DependencyTree>>,
 }
