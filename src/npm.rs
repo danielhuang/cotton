@@ -143,12 +143,6 @@ pub struct DependencyTree {
     pub children: BTreeMap<CompactString, Arc<DependencyTree>>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Debug)]
-pub struct PartialDependencyTree {
-    pub root: Dependency,
-    pub children: BTreeMap<CompactString, Dependency>,
-}
-
 impl DependencyTree {
     pub fn filter(&self, exclude: &FxHashSet<Dependency>) -> Self {
         Self {
