@@ -217,8 +217,8 @@ async fn main() -> Result<()> {
             let dependencies = package
                 .as_object_mut()
                 .wrap_err("`package.json` is invalid")?
-                .get_mut("dependencies")
-                .wrap_err("`package.json` is missing `dependencies`")?
+                .entry("dependencies")
+                .or_insert(Value::Object(Default::default()))
                 .as_object_mut()
                 .wrap_err("`package.json` contains invalid `dependencies`")?;
 
