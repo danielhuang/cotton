@@ -26,7 +26,7 @@ use crate::{
     package::{DepReq, Dist, Package},
     plan::download_package_shared,
     progress::{log_progress, log_verbose},
-    util::{decode_json, get_node_cpu, get_node_os, VersionReq, CLIENT_Z},
+    util::{decode_json, get_node_cpu, get_node_os, retry, VersionReq, CLIENT_Z},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -69,15 +69,18 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
     static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
     let _permit = S.acquire().await.unwrap();
 
-    decode_json(
-        &CLIENT_Z
-            .get(format!("https://registry.npmjs.org/{}", name))
-            .send()
-            .await?
-            .bytes()
-            .await?,
-    )
-    .map_err(|e| eyre!("[{name}] {e}"))
+    retry(|| async {
+        decode_json(
+            &CLIENT_Z
+                .get(format!("https://registry.npmjs.org/{}", name))
+                .send()
+                .await?
+                .bytes()
+                .await?,
+        )
+        .map_err(|e| eyre!("[{name}] {e}"))
+    })
+    .await
 }
 
 pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {

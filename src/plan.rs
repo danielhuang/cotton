@@ -32,7 +32,7 @@ use crate::{
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
     progress::{log_progress, log_verbose, log_warning},
-    util::{VersionReq, CLIENT},
+    util::{retry, VersionReq, CLIENT},
 };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -169,7 +169,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     static CACHE: Lazy<Cache<Dependency, Result<(), CompactString>>> = Lazy::new(|| {
         Cache::new(|key: Dependency, _| async move {
-            download_package(&key)
+            retry(|| async { download_package(&key).await })
                 .await
                 .map_err(|e| e.to_compact_string())
         })

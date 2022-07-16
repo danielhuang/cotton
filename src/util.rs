@@ -1,13 +1,17 @@
+use std::future::Future;
 use std::{
     env::consts::{ARCH, OS},
     fmt::Display,
 };
 
+use color_eyre::eyre::Result;
 use compact_str::CompactString;
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+use crate::progress::log_warning;
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 pub static CLIENT_Z: Lazy<Client> = Lazy::new(|| {
@@ -68,4 +72,20 @@ pub fn get_node_cpu() -> &'static str {
         "x86_64" => "x64",
         x => x,
     }
+}
+
+const RETRY_LIMIT: usize = 3;
+
+pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fut) -> Result<T> {
+    let mut last = None;
+    for _ in 0..RETRY_LIMIT {
+        match f().await {
+            Ok(x) => return Ok(x),
+            Err(e) => {
+                log_warning(&format!("Retrying {}", e));
+                last = Some(e);
+            }
+        }
+    }
+    Err(last.unwrap().wrap_err("Failed all retries"))
 }
