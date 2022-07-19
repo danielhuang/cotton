@@ -253,7 +253,12 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
                 if symlink(&path, &path).await.is_err() {
                     log_warning(&format!("Unable to save binary: {}", cmd));
                 }
-                set_permissions(&path, Permissions::from_mode(0o755)).await?;
+                if set_permissions(&path, Permissions::from_mode(0o755))
+                    .await
+                    .is_err()
+                {
+                    log_warning(&format!("Unable to set permissions: {}", cmd));
+                }
             }
         }
     }
