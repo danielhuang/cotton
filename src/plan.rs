@@ -1,6 +1,8 @@
 use std::{
     collections::BTreeMap,
+    fs::Permissions,
     io,
+    os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -19,7 +21,10 @@ use rustc_hash::FxHashMap;
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use tokio::{
-    fs::{create_dir_all, metadata, read_dir, remove_dir_all, remove_file, symlink, File},
+    fs::{
+        create_dir_all, metadata, read_dir, remove_dir_all, remove_file, set_permissions, symlink,
+        File,
+    },
     io::BufReader,
     sync::Semaphore,
     task::spawn_blocking,
@@ -243,13 +248,12 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
                 path.set_extension("js");
             }
             if !cmd.contains('/') {
-                let _ = remove_file(PathBuf::from("node_modules/.bin").join(&**cmd)).await;
-                if symlink(&path, PathBuf::from("node_modules/.bin").join(&**cmd))
-                    .await
-                    .is_err()
-                {
+                let path = PathBuf::from("node_modules/.bin").join(&**cmd);
+                let _ = remove_file(&path).await;
+                if symlink(&path, &path).await.is_err() {
                     log_warning(&format!("Unable to save binary: {}", cmd));
                 }
+                set_permissions(&path, Permissions::from_mode(0o755)).await?;
             }
         }
     }
