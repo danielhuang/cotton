@@ -248,12 +248,12 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
                 path.set_extension("js");
             }
             if !cmd.contains('/') {
-                let path = PathBuf::from("node_modules/.bin").join(&**cmd);
-                let _ = remove_file(&path).await;
-                if symlink(&path, &path).await.is_err() {
+                let bin_path = PathBuf::from("node_modules/.bin").join(&**cmd);
+                let _ = remove_file(&bin_path).await;
+                if symlink(&path, &bin_path).await.is_err() {
                     log_warning(&format!("Unable to save binary: {}", cmd));
                 }
-                if set_permissions(&path, Permissions::from_mode(0o755))
+                if set_permissions(&bin_path, Permissions::from_mode(0o755))
                     .await
                     .is_err()
                 {
