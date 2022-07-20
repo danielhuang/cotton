@@ -45,7 +45,7 @@ tokio-tar = { git = "https://github.com/danielhuang/tokio-tar", rev = "ac063a102
 tokio-util = "0.7.3"
 tracing = "0.1.35"
 tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.14", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.15", features = ["env-filter"] }
 
 [profile.dev]
 opt-level = 3
