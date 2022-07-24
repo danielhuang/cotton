@@ -222,6 +222,12 @@ impl PartialGraph {
             req: DepReq,
             relations: Arc<DashMap<DepReq, Option<(Version, Subpackage)>>>,
         ) -> Result<()> {
+            if relations.contains_key(&req) {
+                return Ok(());
+            }
+
+            relations.insert(req.clone(), None);
+
             send.clone().send(tokio::spawn(async move {
                 let (version, subpackage) = fetch_dep_single(req.clone()).await?;
 
@@ -235,10 +241,7 @@ impl PartialGraph {
                 relations.insert(req, Some((version, subpackage.clone())));
 
                 for child_req in subpackage.iter() {
-                    if !relations.contains_key(&child_req) {
-                        relations.insert(child_req.clone(), None);
-                        queue_resolve(send.clone(), child_req, relations.clone())?;
-                    }
+                    queue_resolve(send.clone(), child_req, relations.clone())?;
                 }
 
                 Ok(()) as Result<_>
