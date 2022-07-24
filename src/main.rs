@@ -10,15 +10,13 @@ use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use compact_str::{CompactString, ToCompactString};
-use futures::future::try_join_all;
 use futures::lock::Mutex;
 use futures_lite::future::race;
-use itertools::Itertools;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
-use npm::{fetch_dep_cached, fetch_package};
+use npm::{fetch_package, PartialGraph};
 use once_cell::sync::Lazy;
-use package::{read_package, read_package_as_value, save_package, write_json, Package};
+use package::{read_json, read_package, read_package_as_value, save_package, write_json, Package};
 use plan::{flatten, tree_size};
 use progress::log_progress;
 use serde_json::Value;
@@ -26,6 +24,9 @@ use std::{env, path::PathBuf, process::exit, time::Instant};
 use tikv_jemallocator::Jemalloc;
 use tokio::fs::create_dir_all;
 use tokio::{fs::read_to_string, process::Command};
+use tracing_error::ErrorLayer;
+use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use watch::async_watch;
 
 use crate::{
@@ -61,38 +62,21 @@ pub enum Subcommand {
     },
 }
 
-fn install_tracing() {
-    use tracing_error::ErrorLayer;
-    use tracing_subscriber::prelude::*;
-    use tracing_subscriber::{fmt, EnvFilter};
-
-    let fmt_layer = fmt::layer().with_target(false);
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
-
-    tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(fmt_layer)
-        .with(ErrorLayer::default())
-        .init();
-}
-
 async fn prepare_plan(package: &Package) -> Result<Plan> {
-    let deps = try_join_all(
-        package
-            .iter_with_dev()
-            .map(|d| async move { fetch_dep_cached(d, vec![]).await }),
-    )
-    .await?
-    .into_iter()
-    .flatten()
-    .collect_vec();
+    log_progress("Preparing");
 
-    log_progress(&format!("Fetched {} root deps", deps.len().yellow()));
+    let mut graph: PartialGraph = read_json("cotton.lock").await.unwrap_or_default();
+    graph.append(package.iter_with_dev()).await?;
+    write_json("cotton.lock", &graph).await?;
+
+    log_progress("Retrieved dependency graph");
+
+    let trees = graph.build_trees(package.iter_with_dev())?;
+    log_progress(&format!("Fetched {} root deps", trees.len().yellow()));
 
     let mut plan = Plan::new(
-        deps.iter()
+        trees
+            .iter()
             .map(|x| (x.root.name.to_compact_string(), (**x).clone()))
             .collect(),
     );
@@ -112,11 +96,10 @@ async fn read_plan(path: &str) -> Result<Plan> {
     Ok(serde_json::from_str(&plan)?)
 }
 
-pub async fn verify_installation(package: &Package) -> Result<bool> {
+pub async fn verify_installation(package: &Package, plan: &Plan) -> Result<bool> {
     let installed = read_plan("node_modules/.cotton/plan.json").await?;
-    let lock_file = read_plan("cotton.lock").await?;
 
-    if installed != lock_file {
+    if &installed != plan {
         return Ok(false);
     }
 
@@ -126,30 +109,18 @@ pub async fn verify_installation(package: &Package) -> Result<bool> {
 async fn install() -> Result<(), color_eyre::Report> {
     let package = read_package().await?;
 
-    if let Ok(true) = verify_installation(&package).await {
-        return Ok(());
-    }
+    init_storage().await?;
 
     let start = Instant::now();
 
-    init_storage().await?;
+    let plan = prepare_plan(&package).await?;
 
-    let plan = {
-        if let Ok(lock_file) = read_plan("cotton.lock").await {
-            if lock_file.satisfies(&package) {
-                lock_file
-            } else {
-                prepare_plan(&package).await?
-            }
-        } else {
-            prepare_plan(&package).await?
-        }
-    };
+    if let Ok(true) = verify_installation(&package, &plan).await {
+        return Ok(());
+    }
 
     execute_plan(&plan).await?;
-
     write_json("node_modules/.cotton/plan.json", &plan).await?;
-    write_json("cotton.lock", &plan).await?;
 
     PROGRESS_BAR.println(format!(
         "Installed {} packages in {}ms",
@@ -184,7 +155,10 @@ pub static ARGS: Lazy<Args> = Lazy::new(Args::parse);
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    install_tracing();
+    tracing_subscriber::registry()
+        .with(ErrorLayer::default())
+        .init();
+
     color_eyre::install()?;
 
     match &ARGS.cmd {

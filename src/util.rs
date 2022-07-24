@@ -13,6 +13,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::progress::log_warning;
 
+pub const CLIENT_LIMIT: usize = 100;
+
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 pub static CLIENT_Z: Lazy<Client> = Lazy::new(|| {
     ClientBuilder::new()

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Debug, path::Path};
 use color_eyre::eyre::Result;
 use compact_str::{CompactString, ToCompactString};
 use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
     fs::{read_to_string, File},
@@ -25,11 +25,36 @@ pub struct Package {
     pub os: PlatformMap,
     pub cpu: PlatformMap,
     pub scripts: FxHashMap<CompactString, Value>,
-    #[serde(flatten)]
-    pub rest: Value,
 }
 
 impl Package {
+    pub fn sub(self) -> Subpackage {
+        Subpackage {
+            name: self.name,
+            dist: self.dist,
+            dependencies: self.dependencies,
+            optional_dependencies: self.optional_dependencies,
+            os: self.os,
+            cpu: self.cpu,
+            bin: self.bin,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct Subpackage {
+    pub name: Option<CompactString>,
+    pub dist: Dist,
+    pub dependencies: FxHashMap<CompactString, VersionReq>,
+    pub optional_dependencies: FxHashMap<CompactString, VersionReq>,
+    pub os: PlatformMap,
+    pub cpu: PlatformMap,
+    pub bin: Option<Bin>,
+}
+
+impl Subpackage {
     pub fn bins(&self) -> BTreeMap<CompactString, CompactString> {
         match &self.bin {
             Some(Bin::Multi(x)) => x.clone().into_iter().collect(),
@@ -45,6 +70,14 @@ impl Package {
             None => [].into_iter().collect(),
         }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = DepReq> + '_ {
+        self.dependencies.iter().map(|(n, v)| DepReq {
+            name: n.to_compact_string(),
+            version: v.to_owned(),
+            optional: self.optional_dependencies.contains_key(n),
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -59,7 +92,7 @@ pub struct Dist {
     pub tarball: CompactString,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct DepReq {
     pub name: CompactString,
     pub version: VersionReq,
@@ -77,14 +110,6 @@ impl Debug for DepReq {
 }
 
 impl Package {
-    pub fn iter(&self) -> impl Iterator<Item = DepReq> + '_ {
-        self.dependencies.iter().map(|(n, v)| DepReq {
-            name: n.to_compact_string(),
-            version: v.to_owned(),
-            optional: self.optional_dependencies.contains_key(n),
-        })
-    }
-
     pub fn iter_with_dev(&self) -> impl Iterator<Item = DepReq> + '_ {
         self.dependencies
             .iter()
@@ -102,15 +127,11 @@ impl Package {
 }
 
 pub async fn read_package() -> Result<Package> {
-    Ok(serde_json::from_str(
-        &read_to_string("package.json").await?,
-    )?)
+    read_json("package.json").await
 }
 
 pub async fn read_package_as_value() -> Result<Value> {
-    Ok(serde_json::from_str(
-        &read_to_string("package.json").await?,
-    )?)
+    read_json("package.json").await
 }
 
 pub async fn save_package(package: &Value) -> Result<()> {
@@ -124,4 +145,8 @@ pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result
         .await?;
 
     Ok(())
+}
+
+pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> Result<T> {
+    Ok(serde_json::from_str(&read_to_string(path).await?)?)
 }

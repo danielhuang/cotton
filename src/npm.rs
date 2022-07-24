@@ -1,16 +1,10 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
-
-use async_recursion::async_recursion;
 use cached::proc_macro::cached;
 use color_eyre::{
     eyre::{eyre, ContextCompat, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
-use futures::future::try_join_all;
+use dashmap::DashMap;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use node_semver::Version;
@@ -18,15 +12,27 @@ use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use std::fmt::Debug;
-use tokio::sync::Semaphore;
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    mem::take,
+    sync::Arc,
+};
+use tokio::{
+    sync::{
+        mpsc::{unbounded_channel, UnboundedSender},
+        Semaphore,
+    },
+    task::JoinHandle,
+};
 
 use crate::{
     cache::Cache,
-    package::{DepReq, Dist, Package},
+    package::{DepReq, Dist, Package, Subpackage},
     plan::download_package_shared,
     progress::{log_progress, log_verbose},
-    util::{decode_json, get_node_cpu, get_node_os, retry, VersionReq, CLIENT_Z},
+    util::{decode_json, get_node_cpu, get_node_os, retry, VersionReq, CLIENT_LIMIT, CLIENT_Z},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -66,7 +72,7 @@ impl PlatformMap {
 
 #[tracing::instrument]
 pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(CLIENT_LIMIT));
     let _permit = S.acquire().await.unwrap();
 
     retry(|| async {
@@ -102,15 +108,17 @@ pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
 
 #[tracing::instrument]
 #[cached(result)]
-async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
+async fn fetch_dep_single(d: DepReq) -> Result<(Version, Subpackage)> {
     let res = fetch_package_cached(&d.name).await?;
+
+    log_progress(&format!("Fetched {}", d.name.bright_blue()));
 
     if let VersionReq::Other(tag) = &d.version {
         let tag = res
             .dist_tags
             .get(tag)
             .wrap_err_with(|| eyre!("Version cannot be satisfied: {} {}", d.name, d.version))?;
-        let version: Version = tag.parse()?;
+        let version = Version::parse(&tag)?;
         let package = res.versions.get(&version).wrap_err_with(|| {
             eyre!(
                 "Tag refers to a version that does not exist: {} - {} refers to {}",
@@ -120,7 +128,7 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
             )
         })?;
 
-        Ok((version, package.clone()))
+        Ok((version, package.clone().sub()))
     } else {
         let (version, package) = res
             .versions
@@ -135,7 +143,7 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Package)> {
                 )
             })?;
 
-        Ok((version.clone(), package.clone()))
+        Ok((version.clone(), package.clone().sub()))
     }
 }
 
@@ -180,94 +188,6 @@ impl Dependency {
     }
 }
 
-#[async_recursion]
-pub async fn fetch_dep(
-    d: &DepReq,
-    stack: &[(DepReq, Version)],
-) -> Result<Option<Arc<DependencyTree>>> {
-    let (version, package) = fetch_dep_single(d.clone()).await?;
-
-    if !package.os.is_supported(get_node_os()) || !package.cpu.is_supported(get_node_cpu()) {
-        if d.optional {
-            return Ok(None);
-        } else {
-            return Err(Report::msg("Required dependency is not supported"));
-        }
-    }
-
-    log_progress(&format!("Fetched {}", d.name.bright_blue()));
-
-    let deps = try_join_all(package.iter().map(|d2| {
-        let version = version.clone();
-        async move {
-            fetch_dep_cached(
-                d2,
-                stack
-                    .iter()
-                    .cloned()
-                    .chain([(d.clone(), version)])
-                    .collect_vec(),
-            )
-            .await
-        }
-    }))
-    .await?
-    .into_iter()
-    .flatten();
-
-    let tree = DependencyTree {
-        children: deps
-            .into_iter()
-            .map(|x| (x.root.name.to_compact_string(), x))
-            .collect(),
-        root: Dependency {
-            name: d.name.to_compact_string(),
-            version: version.to_owned(),
-            dist: package.dist.clone(),
-            bins: package.bins(),
-        },
-    };
-
-    tokio::spawn(download_package_shared(tree.root.clone()));
-
-    Ok(Some(Arc::new(tree)))
-}
-
-type DepStack = Vec<(DepReq, Version)>;
-
-pub async fn fetch_dep_cached(d: DepReq, stack: DepStack) -> Result<Option<Arc<DependencyTree>>> {
-    type Args = (DepReq, DepStack);
-    type Output = Option<Arc<DependencyTree>>;
-
-    static CACHE: Lazy<Cache<Args, Result<Output, CompactString>, ()>> = Lazy::new(|| {
-        Cache::new(|(d, stack): Args, _| async move {
-            tokio::spawn(async move { fetch_dep(&d, &stack).await })
-                .await
-                .map_err(|e| e.to_compact_string())
-                .and_then(|r| r.map_err(|e| e.to_compact_string()))
-        })
-    });
-
-    if stack
-        .iter()
-        .any(|(d2, v)| d.name == d2.name && d.version.satisfies(v))
-    {
-        log_verbose(&format!(
-            "Detected cyclic dependencies: {} > {} {}",
-            stack
-                .iter()
-                .map(|(r, v)| format!("{}@{}", r.name, v).bright_blue().to_string())
-                .join(" > "),
-            d.name,
-            d.version
-        ));
-
-        return Ok(None);
-    }
-
-    CACHE.get((d, stack), ()).await.map_err(Report::msg)
-}
-
 fn flatten_dep_tree(dep: &DependencyTree, map: &mut FxHashMap<Dependency, DependencyTree>) {
     if map.insert(dep.root.clone(), dep.clone()).is_none() {
         for dep in dep.children.values() {
@@ -284,4 +204,140 @@ pub fn flatten_dep_trees<'a>(
         flatten_dep_tree(dep, &mut set);
     }
     set
+}
+
+#[serde_as]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct PartialGraph {
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub relations: HashMap<DepReq, (Version, Subpackage)>,
+    #[serde(skip)]
+    pub remaining: FxHashSet<DepReq>,
+}
+
+impl PartialGraph {
+    pub async fn append(&mut self, remaining: impl Iterator<Item = DepReq>) -> Result<()> {
+        fn queue_resolve(
+            send: UnboundedSender<JoinHandle<Result<()>>>,
+            req: DepReq,
+            relations: Arc<DashMap<DepReq, Option<(Version, Subpackage)>>>,
+        ) -> Result<()> {
+            send.clone().send(tokio::spawn(async move {
+                let (version, subpackage) = fetch_dep_single(req.clone()).await?;
+
+                tokio::spawn(download_package_shared(Dependency {
+                    name: req.name.to_compact_string(),
+                    version: version.clone(),
+                    dist: subpackage.dist.clone(),
+                    bins: subpackage.bins(),
+                }));
+
+                relations.insert(req, Some((version, subpackage.clone())));
+
+                for child_req in subpackage.iter() {
+                    if !relations.contains_key(&child_req) {
+                        relations.insert(child_req.clone(), None);
+                        queue_resolve(send.clone(), child_req, relations.clone())?;
+                    }
+                }
+
+                Ok(()) as Result<_>
+            }))?;
+
+            Ok(())
+        }
+
+        let relations: Arc<DashMap<_, _>> = Arc::new(
+            take(&mut self.relations)
+                .into_iter()
+                .map(|x| (x.0, Some(x.1)))
+                .collect(),
+        );
+
+        let (send, mut recv) = unbounded_channel();
+
+        for req in remaining {
+            queue_resolve(send.clone(), req, relations.clone())?;
+        }
+
+        drop(send);
+
+        while let Some(f) = recv.recv().await {
+            f.await??;
+        }
+
+        self.relations = relations
+            .iter()
+            .map(|x| (x.key().clone(), x.value().clone().unwrap()))
+            .collect();
+
+        Ok(())
+    }
+
+    fn build_tree(
+        &self,
+        req: &DepReq,
+        stack: &mut Vec<(DepReq, Version)>,
+    ) -> Result<Option<Arc<DependencyTree>>> {
+        if stack
+            .iter()
+            .any(|(d2, v)| req.name == d2.name && req.version.satisfies(v))
+        {
+            log_verbose(&format!(
+                "Detected cyclic dependencies: {} > {} {}",
+                stack
+                    .iter()
+                    .map(|(r, v)| format!("{}@{}", r.name, v).bright_blue().to_string())
+                    .join(" > "),
+                req.name,
+                req.version
+            ));
+
+            return Ok(None);
+        }
+
+        let (version, package) = self.relations[req].clone();
+
+        if !package.os.is_supported(get_node_os()) || !package.cpu.is_supported(get_node_cpu()) {
+            if req.optional {
+                return Ok(None);
+            } else {
+                return Err(Report::msg("Required dependency is not supported"));
+            }
+        }
+
+        let mut deps = vec![];
+        for dep in package.iter() {
+            stack.push((req.clone(), version.clone()));
+            if let Some(tree) = self.build_tree(&dep, stack)? {
+                deps.push(tree);
+            }
+            stack.pop().unwrap();
+        }
+
+        let tree = DependencyTree {
+            children: deps
+                .into_iter()
+                .map(|x| (x.root.name.to_compact_string(), x))
+                .collect(),
+            root: Dependency {
+                name: req.name.to_compact_string(),
+                version,
+                dist: package.dist.clone(),
+                bins: package.bins(),
+            },
+        };
+
+        Ok(Some(Arc::new(tree)))
+    }
+
+    pub fn build_trees(
+        &self,
+        reqs: impl Iterator<Item = DepReq>,
+    ) -> Result<Vec<Arc<DependencyTree>>> {
+        let v: Result<Vec<_>> = reqs.map(|x| self.build_tree(&x, &mut vec![])).collect();
+        let v = v?;
+        let v = v.into_iter().flatten().collect();
+        Ok(v)
+    }
 }

@@ -1,12 +1,3 @@
-use std::{
-    collections::BTreeMap,
-    fs::Permissions,
-    io,
-    os::unix::prelude::PermissionsExt,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-
 use async_compression::tokio::bufread::GzipDecoder;
 use async_recursion::async_recursion;
 use color_eyre::{
@@ -20,6 +11,14 @@ use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::BTreeMap,
+    fs::Permissions,
+    io,
+    os::unix::prelude::PermissionsExt,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::{
     fs::{
         create_dir_all, metadata, read_dir, remove_dir_all, remove_file, set_permissions, symlink,
@@ -37,7 +36,7 @@ use crate::{
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
     progress::{log_progress, log_verbose, log_warning},
-    util::{retry, VersionReq, CLIENT},
+    util::{retry, VersionReq, CLIENT, CLIENT_LIMIT},
 };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -60,7 +59,7 @@ impl Plan {
         package.iter_with_dev().all(|req| {
             if let Some(version) = map.get(&req.name) {
                 if let VersionReq::Range(range) = req.version {
-                    return version.satisfies(&range);
+                    return range.satisfies(version);
                 }
             }
             false
@@ -139,7 +138,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         return Ok(());
     }
 
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(128));
+    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(CLIENT_LIMIT));
     let permit = S.acquire().await.unwrap();
 
     log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
@@ -152,7 +151,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
 
     let reader = StreamReader::new(res);
-    let reader = BufReader::with_capacity(4 * 1024 * 1024, reader);
+    let reader = BufReader::with_capacity(1024 * 1024, reader);
     let reader = GzipDecoder::new(reader);
 
     let mut archive = Archive::new(reader);
