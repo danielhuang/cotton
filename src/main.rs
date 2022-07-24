@@ -106,7 +106,7 @@ pub async fn verify_installation(package: &Package, plan: &Plan) -> Result<bool>
     Ok(installed.satisfies(package))
 }
 
-async fn install() -> Result<(), color_eyre::Report> {
+async fn install() -> Result<()> {
     let package = read_package().await?;
 
     init_storage().await?;
@@ -115,18 +115,16 @@ async fn install() -> Result<(), color_eyre::Report> {
 
     let plan = prepare_plan(&package).await?;
 
-    if let Ok(true) = verify_installation(&package, &plan).await {
-        return Ok(());
+    if !matches!(verify_installation(&package, &plan).await, Ok(true)) {
+        execute_plan(&plan).await?;
+        write_json("node_modules/.cotton/plan.json", &plan).await?;
+
+        PROGRESS_BAR.println(format!(
+            "Installed {} packages in {}ms",
+            tree_size(&plan.trees).yellow(),
+            start.elapsed().as_millis().yellow()
+        ));
     }
-
-    execute_plan(&plan).await?;
-    write_json("node_modules/.cotton/plan.json", &plan).await?;
-
-    PROGRESS_BAR.println(format!(
-        "Installed {} packages in {}ms",
-        tree_size(&plan.trees).yellow(),
-        start.elapsed().as_millis().yellow()
-    ));
 
     PROGRESS_BAR.finish_and_clear();
 
