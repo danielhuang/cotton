@@ -1,16 +1,17 @@
-use std::{collections::BTreeMap, fmt::Debug, path::Path};
-
-use color_eyre::eyre::Result;
-use compact_str::{CompactString, ToCompactString};
-use rustc_hash::FxHashMap;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::Value;
-use tokio::{
-    fs::{read_to_string, File},
-    io::AsyncWriteExt,
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
 };
 
 use crate::{npm::PlatformMap, util::VersionReq};
+use color_eyre::eyre::Result;
+use compact_str::{CompactString, ToCompactString};
+use rustc_hash::FxHashMap;
+use serde::{
+    de::{self},
+    Deserialize, Serialize,
+};
+use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
@@ -92,11 +93,64 @@ pub struct Dist {
     pub tarball: CompactString,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct DepReq {
     pub name: CompactString,
     pub version: VersionReq,
     pub optional: bool,
+}
+
+impl Display for DepReq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}!{}{}",
+            self.name,
+            self.version,
+            if self.optional { "?" } else { "" }
+        )
+    }
+}
+
+impl Serialize for DepReq {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for DepReq {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let (name, rest) = s
+            .split_once('!')
+            .ok_or_else(|| de::Error::custom("Failed to parse version"))?;
+        let optional = rest.ends_with('?');
+        let version = rest.trim_end_matches('?');
+        Ok(Self {
+            name: name.to_compact_string(),
+            version: serde_json::from_value(Value::String(version.to_string()))
+                .map_err(de::Error::custom)?,
+            optional,
+        })
+    }
+}
+
+impl PartialOrd for DepReq {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.to_string().partial_cmp(&other.to_string())
+    }
+}
+
+impl Ord for DepReq {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_string().cmp(&other.to_string())
+    }
 }
 
 impl Debug for DepReq {
@@ -124,29 +178,4 @@ impl Package {
                 optional: self.optional_dependencies.contains_key(n),
             }))
     }
-}
-
-pub async fn read_package() -> Result<Package> {
-    read_json("package.json").await
-}
-
-pub async fn read_package_as_value() -> Result<Value> {
-    read_json("package.json").await
-}
-
-pub async fn save_package(package: &Value) -> Result<()> {
-    write_json("package.json", package).await
-}
-
-pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result<()> {
-    File::create(path)
-        .await?
-        .write_all(serde_json::to_string_pretty(&data)?.as_bytes())
-        .await?;
-
-    Ok(())
-}
-
-pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> Result<T> {
-    Ok(serde_json::from_str(&read_to_string(path).await?)?)
 }

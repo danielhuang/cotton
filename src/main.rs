@@ -14,9 +14,9 @@ use futures::lock::Mutex;
 use futures_lite::future::race;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
-use npm::{fetch_package, PartialGraph};
+use npm::{fetch_package, Graph, Lockfile};
 use once_cell::sync::Lazy;
-use package::{read_json, read_package, read_package_as_value, save_package, write_json, Package};
+use package::Package;
 use plan::{flatten, tree_size};
 use progress::log_progress;
 use serde_json::Value;
@@ -27,6 +27,7 @@ use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use util::{read_json, read_package, read_package_as_value, save_package, write_json};
 use watch::async_watch;
 
 use crate::{
@@ -65,9 +66,10 @@ pub enum Subcommand {
 async fn prepare_plan(package: &Package) -> Result<Plan> {
     log_progress("Preparing");
 
-    let mut graph: PartialGraph = read_json("cotton.lock").await.unwrap_or_default();
+    let lockfile: Lockfile = read_json("cotton.lock").await.unwrap_or_default();
+    let mut graph = lockfile.into_graph();
     graph.append(package.iter_with_dev()).await?;
-    write_json("cotton.lock", &graph).await?;
+    write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
 
     log_progress("Retrieved dependency graph");
 
@@ -170,12 +172,13 @@ async fn main() -> Result<()> {
 
             let start = Instant::now();
 
-            let plan = prepare_plan(&package).await?;
-            write_json("cotton.lock", &plan).await?;
+            let mut graph = Graph::default();
+            graph.append(package.iter_with_dev()).await?;
+            write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
 
             PROGRESS_BAR.println(format!(
                 "Prepared {} packages in {}ms",
-                tree_size(&plan.trees).yellow(),
+                graph.relations.len().yellow(),
                 start.elapsed().as_millis().yellow()
             ));
         }

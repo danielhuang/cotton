@@ -12,10 +12,9 @@ use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use std::fmt::Debug;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     mem::take,
     sync::Arc,
 };
@@ -206,16 +205,12 @@ pub fn flatten_dep_trees<'a>(
     set
 }
 
-#[serde_as]
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct PartialGraph {
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub relations: HashMap<DepReq, (Version, Subpackage)>,
-    #[serde(skip)]
-    pub remaining: FxHashSet<DepReq>,
+#[derive(Debug, Default, Clone)]
+pub struct Graph {
+    pub relations: FxHashMap<DepReq, (Version, Subpackage)>,
 }
 
-impl PartialGraph {
+impl Graph {
     pub async fn append(&mut self, remaining: impl Iterator<Item = DepReq>) -> Result<()> {
         fn queue_resolve(
             send: UnboundedSender<JoinHandle<Result<()>>>,
@@ -342,5 +337,25 @@ impl PartialGraph {
         let v = v?;
         let v = v.into_iter().flatten().collect();
         Ok(v)
+    }
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct Lockfile {
+    #[serde(flatten)]
+    pub relations: BTreeMap<DepReq, (Version, Subpackage)>,
+}
+
+impl Lockfile {
+    pub fn new(graph: Graph) -> Self {
+        Self {
+            relations: graph.relations.into_iter().collect(),
+        }
+    }
+
+    pub fn into_graph(self) -> Graph {
+        Graph {
+            relations: self.relations.into_iter().collect(),
+        }
     }
 }

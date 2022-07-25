@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::path::Path;
 use std::{
     env::consts::{ARCH, OS},
     fmt::Display,
@@ -10,7 +11,11 @@ use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::Value;
+use tokio::fs::{read_to_string, File};
+use tokio::io::AsyncWriteExt;
 
+use crate::package::Package;
 use crate::progress::log_warning;
 
 pub const CLIENT_LIMIT: usize = 100;
@@ -90,4 +95,29 @@ pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fu
         }
     }
     Err(last.unwrap().wrap_err("Failed all retries"))
+}
+
+pub async fn read_package() -> Result<Package> {
+    read_json("package.json").await
+}
+
+pub async fn read_package_as_value() -> Result<Value> {
+    read_json("package.json").await
+}
+
+pub async fn save_package(package: &Value) -> Result<()> {
+    write_json("package.json", package).await
+}
+
+pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> Result<T> {
+    Ok(serde_json::from_str(&read_to_string(path).await?)?)
+}
+
+pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result<()> {
+    File::create(path)
+        .await?
+        .write_all(serde_json::to_string_pretty(&data)?.as_bytes())
+        .await?;
+
+    Ok(())
 }
