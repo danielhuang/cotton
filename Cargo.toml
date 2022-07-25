@@ -43,7 +43,7 @@ serde_json = { version = "1.0.82", features = ["preserve_order"] }
 serde_path_to_error = "0.1.7"
 serde_with = "2.0.0"
 tikv-jemallocator = "0.5.0"
-tokio = { version = "1.20.0", features = ["full"] }
+tokio = { version = "1.20.1", features = ["full"] }
 tokio-tar = { git = "https://github.com/danielhuang/tokio-tar", rev = "ac063a10224a9dcb16967e792c3075e0ee8bb1a7" }
 tokio-util = { version = "0.7.3", features = ["compat"] }
 tracing = "0.1.35"
