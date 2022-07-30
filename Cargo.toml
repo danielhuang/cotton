@@ -46,7 +46,7 @@ tikv-jemallocator = "0.5.0"
 tokio = { version = "1.20.1", features = ["full"] }
 tokio-tar = { git = "https://github.com/danielhuang/tokio-tar", rev = "ac063a10224a9dcb16967e792c3075e0ee8bb1a7" }
 tokio-util = { version = "0.7.3", features = ["compat"] }
-tracing = "0.1.35"
+tracing = "0.1.36"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.15", features = ["env-filter"] }
 
