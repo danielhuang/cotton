@@ -39,7 +39,7 @@ reqwest = { version = "0.11.11", features = [
 rustc-hash = "1.1.0"
 safe-path = "0.1.0"
 serde = { version = "1.0.142", features = ["derive", "rc"] }
-serde_json = { version = "1.0.82", features = ["preserve_order"] }
+serde_json = { version = "1.0.83", features = ["preserve_order"] }
 serde_path_to_error = "0.1.8"
 serde_with = "2.0.0"
 tikv-jemallocator = "0.5.0"
