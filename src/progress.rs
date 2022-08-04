@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
@@ -8,10 +10,11 @@ pub static PROGRESS_BAR: Lazy<ProgressBar> = Lazy::new(|| {
     let pb = ProgressBar::new(0).with_style(
         ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] {wide_msg}")
+            .unwrap()
             .progress_chars("#>-")
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
-    pb.enable_steady_tick(200);
+    pb.enable_steady_tick(Duration::from_millis(200));
     pb
 });
 

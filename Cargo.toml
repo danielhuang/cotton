@@ -19,7 +19,7 @@ futures = "0.3.21"
 futures-lite = "1.12.0"
 generational-arena = "0.2.8"
 indexmap = { version = "1.9.1", features = ["serde"] }
-indicatif = "0.16.2"
+indicatif = "0.17.0"
 itertools = "0.10.3"
 multimap = "0.8.3"
 nix = "0.24.2"
