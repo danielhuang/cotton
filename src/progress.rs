@@ -8,8 +8,7 @@ use crate::ARGS;
 
 pub static PROGRESS_BAR: Lazy<ProgressBar> = Lazy::new(|| {
     let pb = ProgressBar::new(0).with_style(
-        ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] {wide_msg}")
+        ProgressStyle::with_template("{spinner:.blue} {wide_msg} +{pos:.green} ~{len:.magenta}")
             .unwrap()
             .progress_chars("#>-")
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),

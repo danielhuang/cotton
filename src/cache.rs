@@ -7,6 +7,8 @@ use futures::{
 use generational_arena::Arena;
 use tokio::sync::Mutex;
 
+use crate::progress::PROGRESS_BAR;
+
 type SharedBoxFuture<T> = Shared<BoxFuture<'static, T>>;
 
 pub struct Cache<
@@ -39,8 +41,10 @@ impl<
                     Box::pin({
                         let arena = arena.clone();
                         async move {
+                            PROGRESS_BAR.inc_length(1);
                             let i = arena.lock().await.insert(key.clone());
                             let v = loader(key, meta).await;
+                            PROGRESS_BAR.inc(1);
                             arena.lock().await.remove(i);
                             v
                         }

@@ -338,6 +338,10 @@ impl Graph {
         let v = v.into_iter().flatten().collect();
         Ok(v)
     }
+
+    pub fn new(relations: FxHashMap<DepReq, (Version, Subpackage)>) -> Self {
+        Self { relations }
+    }
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -354,8 +358,6 @@ impl Lockfile {
     }
 
     pub fn into_graph(self) -> Graph {
-        Graph {
-            relations: self.relations.into_iter().collect(),
-        }
+        Graph::new(self.relations.into_iter().collect())
     }
 }
