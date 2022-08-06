@@ -146,11 +146,11 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Subpackage)> {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 pub struct DependencyTree {
     #[serde(flatten)]
     pub root: Dependency,
-    pub children: BTreeMap<CompactString, Arc<DependencyTree>>,
+    pub children: FxHashMap<CompactString, Arc<DependencyTree>>,
 }
 
 impl DependencyTree {
@@ -173,7 +173,7 @@ impl DependencyTree {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Serialize, Deserialize)]
 pub struct Dependency {
     pub name: CompactString,
     pub version: Version,
@@ -205,8 +205,9 @@ pub fn flatten_dep_trees<'a>(
     set
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct Graph {
+    #[serde(flatten)]
     pub relations: FxHashMap<DepReq, (Version, Subpackage)>,
 }
 
@@ -230,7 +231,7 @@ impl Graph {
                     name: req.name.to_compact_string(),
                     version: version.clone(),
                     dist: subpackage.dist.clone(),
-                    bins: subpackage.bins(),
+                    bins: subpackage.bins().into_iter().collect(),
                 }));
 
                 relations.insert(req, Some((version, subpackage.clone())));
@@ -322,7 +323,7 @@ impl Graph {
                 name: req.name.to_compact_string(),
                 version,
                 dist: package.dist.clone(),
-                bins: package.bins(),
+                bins: package.bins().into_iter().collect(),
             },
         };
 
@@ -338,13 +339,9 @@ impl Graph {
         let v = v.into_iter().flatten().collect();
         Ok(v)
     }
-
-    pub fn new(relations: FxHashMap<DepReq, (Version, Subpackage)>) -> Self {
-        Self { relations }
-    }
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Default)]
 pub struct Lockfile {
     #[serde(flatten)]
     pub relations: BTreeMap<DepReq, (Version, Subpackage)>,
@@ -355,9 +352,5 @@ impl Lockfile {
         Self {
             relations: graph.relations.into_iter().collect(),
         }
-    }
-
-    pub fn into_graph(self) -> Graph {
-        Graph::new(self.relations.into_iter().collect())
     }
 }

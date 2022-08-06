@@ -66,8 +66,7 @@ pub enum Subcommand {
 async fn prepare_plan(package: &Package) -> Result<Plan> {
     log_progress("Preparing");
 
-    let lockfile: Lockfile = read_json("cotton.lock").await.unwrap_or_default();
-    let mut graph = lockfile.into_graph();
+    let mut graph: Graph = read_json("cotton.lock").await.unwrap_or_default();
     graph.append(package.iter_with_dev()).await?;
     write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
 

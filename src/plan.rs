@@ -12,7 +12,6 @@ use rustc_hash::FxHashMap;
 use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
     fs::Permissions,
     io,
     os::unix::prelude::PermissionsExt,
@@ -42,11 +41,11 @@ use crate::{
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Plan {
     #[serde(flatten)]
-    pub trees: BTreeMap<CompactString, DependencyTree>,
+    pub trees: FxHashMap<CompactString, DependencyTree>,
 }
 
 impl Plan {
-    pub fn new(trees: BTreeMap<CompactString, DependencyTree>) -> Self {
+    pub fn new(trees: FxHashMap<CompactString, DependencyTree>) -> Self {
         Self { trees }
     }
 
@@ -67,7 +66,7 @@ impl Plan {
     }
 }
 
-pub fn flatten(trees: &mut BTreeMap<CompactString, DependencyTree>) {
+pub fn flatten(trees: &mut FxHashMap<CompactString, DependencyTree>) {
     let mut flat_deps = flat_dep_trees(trees);
     for dep in flat_deps.clone().values() {
         if trees.contains_key(&dep.root.name) {
@@ -106,12 +105,12 @@ pub fn flatten(trees: &mut BTreeMap<CompactString, DependencyTree>) {
 }
 
 pub fn flat_dep_trees(
-    trees: &BTreeMap<CompactString, DependencyTree>,
+    trees: &FxHashMap<CompactString, DependencyTree>,
 ) -> FxHashMap<Dependency, DependencyTree> {
     flatten_dep_trees(trees.values())
 }
 
-pub fn tree_size_arc(trees: &BTreeMap<CompactString, Arc<DependencyTree>>) -> usize {
+pub fn tree_size_arc(trees: &FxHashMap<CompactString, Arc<DependencyTree>>) -> usize {
     trees.len()
         + trees
             .values()
@@ -119,7 +118,7 @@ pub fn tree_size_arc(trees: &BTreeMap<CompactString, Arc<DependencyTree>>) -> us
             .sum::<usize>()
 }
 
-pub fn tree_size(trees: &BTreeMap<CompactString, DependencyTree>) -> usize {
+pub fn tree_size(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
     trees.len()
         + trees
             .values()
