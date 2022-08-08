@@ -17,6 +17,7 @@ jobs:
             archive: tar.gz tar.xz
           - target: x86_64-apple-darwin
             archive: zip
+            runs-on: macos-latest
     steps:
       - uses: actions/checkout@master
       - name: Compile and release
