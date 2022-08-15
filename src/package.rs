@@ -3,7 +3,10 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use crate::{npm::PlatformMap, util::VersionReq};
+use crate::{
+    npm::PlatformMap,
+    util::{get_node_cpu, get_node_os, VersionReq},
+};
 use color_eyre::eyre::Result;
 use compact_str::{CompactString, ToCompactString};
 use rustc_hash::FxHashMap;
@@ -78,6 +81,10 @@ impl Subpackage {
             version: v.to_owned(),
             optional: self.optional_dependencies.contains_key(n),
         })
+    }
+
+    pub fn supported(&self) -> bool {
+        self.os.is_supported(get_node_os()) && self.cpu.is_supported(get_node_cpu())
     }
 }
 

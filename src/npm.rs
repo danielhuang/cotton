@@ -31,7 +31,7 @@ use crate::{
     package::{DepReq, Dist, Package, Subpackage},
     plan::download_package_shared,
     progress::{log_progress, log_verbose},
-    util::{decode_json, get_node_cpu, get_node_os, retry, VersionReq, CLIENT_LIMIT, CLIENT_Z},
+    util::{decode_json, retry, VersionReq, CLIENT_LIMIT, CLIENT_Z},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -227,12 +227,14 @@ impl Graph {
             send.clone().send(tokio::spawn(async move {
                 let (version, subpackage) = fetch_dep_single(req.clone()).await?;
 
-                tokio::spawn(download_package_shared(Dependency {
-                    name: req.name.to_compact_string(),
-                    version: version.clone(),
-                    dist: subpackage.dist.clone(),
-                    bins: subpackage.bins().into_iter().collect(),
-                }));
+                if subpackage.supported() {
+                    tokio::spawn(download_package_shared(Dependency {
+                        name: req.name.to_compact_string(),
+                        version: version.clone(),
+                        dist: subpackage.dist.clone(),
+                        bins: subpackage.bins().into_iter().collect(),
+                    }));
+                }
 
                 relations.insert(req, Some((version, subpackage.clone())));
 
@@ -297,7 +299,7 @@ impl Graph {
 
         let (version, package) = self.relations[req].clone();
 
-        if !package.os.is_supported(get_node_os()) || !package.cpu.is_supported(get_node_cpu()) {
+        if !package.supported() {
             if req.optional {
                 return Ok(None);
             } else {
