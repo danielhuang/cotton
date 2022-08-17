@@ -51,10 +51,15 @@ impl Package {
 pub struct Subpackage {
     pub name: Option<CompactString>,
     pub dist: Dist,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<CompactString, VersionReq>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub optional_dependencies: BTreeMap<CompactString, VersionReq>,
+    #[serde(skip_serializing_if = "PlatformMap::is_empty")]
     pub os: PlatformMap,
+    #[serde(skip_serializing_if = "PlatformMap::is_empty")]
     pub cpu: PlatformMap,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bin: Option<Bin>,
 }
 
