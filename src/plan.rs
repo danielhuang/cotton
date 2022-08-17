@@ -9,7 +9,6 @@ use futures::{future::try_join_all, TryStreamExt};
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
-use safe_path::scoped_join;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::Permissions,
@@ -35,6 +34,7 @@ use crate::{
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
     progress::{log_progress, log_verbose, log_warning},
+    scoped_path::scoped_join,
     util::{retry, VersionReq, CLIENT, CLIENT_LIMIT},
 };
 

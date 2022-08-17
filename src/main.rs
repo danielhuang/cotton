@@ -3,6 +3,7 @@ mod npm;
 mod package;
 mod plan;
 mod progress;
+mod scoped_path;
 mod util;
 mod watch;
 
@@ -21,6 +22,7 @@ use plan::{flatten, tree_size};
 use progress::log_progress;
 use serde_json::Value;
 use std::{env, path::PathBuf, process::exit, time::Instant};
+#[cfg(target_os = "linux")]
 use tikv_jemallocator::Jemalloc;
 use tokio::fs::create_dir_all;
 use tokio::{fs::read_to_string, process::Command};
@@ -35,6 +37,7 @@ use crate::{
     progress::PROGRESS_BAR,
 };
 
+#[cfg(target_os = "linux")]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
