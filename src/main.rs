@@ -57,7 +57,12 @@ pub enum Subcommand {
     /// Prepare and save a newly planned lockfile
     Update,
     /// Add package to package.json
-    Add { names: Vec<CompactString> },
+    Add {
+        names: Vec<CompactString>,
+        /// Add to `devDependencies` instead of `dependencies`
+        #[clap(short = 'D', long)]
+        dev: bool,
+    },
     /// Run a script defined in package.json
     Run {
         name: CompactString,
@@ -184,7 +189,7 @@ async fn main() -> Result<()> {
                 start.elapsed().as_millis().yellow()
             ));
         }
-        Subcommand::Add { names } => {
+        Subcommand::Add { names, dev } => {
             if names.is_empty() {
                 PROGRESS_BAR.println("Note: no packages specified");
             }
@@ -194,10 +199,14 @@ async fn main() -> Result<()> {
             let dependencies = package
                 .as_object_mut()
                 .wrap_err("`package.json` is invalid")?
-                .entry("dependencies")
+                .entry(if *dev {
+                    "devDependencies"
+                } else {
+                    "dependencies"
+                })
                 .or_insert(Value::Object(Default::default()))
                 .as_object_mut()
-                .wrap_err("`package.json` contains invalid `dependencies`")?;
+                .wrap_err("`package.json` contains non-object dependencies field")?;
 
             for name in names {
                 let res = fetch_package(name).await?;
