@@ -81,10 +81,12 @@ Installing packages used by [create-react-app](https://create-react-app.dev/):
 
 | Tool | Initial install | With lockfile only | With lockfile and cache |
 | --- | --- | --- | --- |
-| Cotton | **3.9s** | **1.8s** | **0.3s** |
-| pnpm | 11.6s | 7.8s | 2.1s |
-| Yarn | 26.5s | 13.6s | 3.7s |
-| npm | 43.5s | 14.5s | 4.9s |
+| Cotton | **6.1s** | **2.7s** | **1.1s** |
+| pnpm | 19.1s | 21.5s | 5.5s |
+| Yarn | 40.9s | 26.8s | 13.9s |
+| npm | 45.7s | 28.4s | 13.4s |
+
+See [benchmark](benchmark.md) for more information.
 
 Note: Cotton uses an internal per-project cache stored within `node_modules`. This is done to ensure that the cache is located in the same filesystem in order to allow hardlink installation.
 
