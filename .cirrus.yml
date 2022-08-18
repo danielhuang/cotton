@@ -1,7 +1,7 @@
 task:
   container:
     dockerfile: Dockerfile
-    cpu: 8
+    cpu: 2
     greedy: true
   registry_cache:
     folder: $CARGO_HOME/registry
