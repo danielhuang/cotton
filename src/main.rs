@@ -21,6 +21,7 @@ use package::Package;
 use plan::{flatten, tree_size};
 use progress::log_progress;
 use serde_json::Value;
+use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::{env, path::PathBuf, process::exit, time::Instant};
 #[cfg(target_os = "linux")]
 use tikv_jemallocator::Jemalloc;
@@ -69,6 +70,8 @@ pub enum Subcommand {
         #[clap(long)]
         watch: Vec<PathBuf>,
     },
+    /// Clean packages installed in `node_modules` while keeping cache
+    Clean,
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -272,6 +275,19 @@ async fn main() -> Result<()> {
                 let pid = *child_pid.lock().await;
                 if let Some(pid) = pid {
                     signal::kill(Pid::from_raw(pid as _), Signal::SIGINT)?;
+                }
+            }
+        }
+        Subcommand::Clean => {
+            remove_file("node_modules/.cotton/plan.json")?;
+            for item in read_dir("node_modules")? {
+                let item = item?;
+                let file_type = item.file_type()?;
+                if file_type.is_dir() && item.file_name() != ".cotton" {
+                    remove_dir_all(item.path())?;
+                }
+                if file_type.is_file() {
+                    remove_file(item.path())?;
                 }
             }
         }
