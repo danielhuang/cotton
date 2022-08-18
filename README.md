@@ -22,15 +22,24 @@
 cargo install --git https://github.com/danielhuang/cotton
 ```
 
-### Install for a single project (Linux-only)
+### Install compiled artifact (Linux-only)
 
-Download and extract the compiled artifact:
+Download and install the compiled binary:
+
+```
+curl -f#SL --compressed --tlsv1.2 https://api.cirrus-ci.com/v1/artifact/github/danielhuang/cotton/Build/binaries/target/release/cotton > /usr/local/bin/cotton
+chmod +x /usr/local/bin/cotton
+```
+
+If glibc is not installed or is not a recent version, download and install a statically linked (musl) artifact:
 
 ```
 curl -f#SL https://nightly.link/danielhuang/cotton/workflows/build/master/Binary.zip > cotton.zip
 unzip -o cotton.zip
 unzip -o cotton_null_x86_64-unknown-linux-musl.zip
 ```
+
+This will install to the current directory.
 
 ## Get started
 
