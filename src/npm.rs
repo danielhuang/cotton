@@ -1,7 +1,7 @@
 use cached::proc_macro::cached;
 use color_eyre::{
     eyre::{eyre, ContextCompat, Result},
-    Report,
+    Help, Report,
 };
 use compact_str::{CompactString, ToCompactString};
 use dashmap::DashMap;
@@ -297,7 +297,12 @@ impl Graph {
             return Ok(None);
         }
 
-        let (version, package) = self.relations[req].clone();
+        let (version, package) = self
+            .relations
+            .get(req)
+            .wrap_err("A transitive dependency is not found")
+            .suggestion("Regenerate the lockfile")?
+            .clone();
 
         if !package.supported() {
             if req.optional {
