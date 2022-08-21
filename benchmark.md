@@ -30,7 +30,7 @@ hyperfine --prepare 'rm -rf node_modules; true' --warmup 1 'pnpm i'
 
 ## create-react-app benchmark
 
-These benchmarks were performed on [GitPod](https://gitpod.io/).
+These benchmarks were performed on [Gitpod](https://gitpod.io/).
 
 `package.json`:
 
