@@ -13,7 +13,7 @@ cache_loader_async = "0.2.0"
 cached = "0.38.0"
 clap = { version = "3.2.17", features = ["derive"] }
 color-eyre = "0.6.2"
-compact_str = { version = "0.6.0", features = ["serde"] }
+compact_str = { version = "0.6.1", features = ["serde"] }
 dashmap = { version = "5.3.4", features = ["serde"] }
 futures = "0.3.23"
 futures-lite = "1.12.0"
