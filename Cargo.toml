@@ -6,10 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-channel = "1.7.1"
 async-compression = { version = "0.3.14", features = ["tokio", "gzip"] }
 async-recursion = "1.0.0"
-cache_loader_async = "0.2.0"
 cached = "0.38.0"
 clap = { version = "3.2.19", features = ["derive"] }
 color-eyre = "0.6.2"
@@ -21,7 +19,6 @@ generational-arena = "0.2.8"
 indexmap = { version = "1.9.1", features = ["serde"] }
 indicatif = "0.17.0"
 itertools = "0.10.3"
-multimap = "0.8.3"
 nix = "0.25.0"
 node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "3af6c068bc59f58683a536cbcf683c5cec69621f" }
 notify = "=5.0.0-pre.15"
@@ -40,7 +37,6 @@ rustc-hash = "1.1.0"
 serde = { version = "1.0.144", features = ["derive", "rc"] }
 serde_json = { version = "1.0.85", features = ["preserve_order"] }
 serde_path_to_error = "0.1.8"
-serde_with = "2.0.0"
 tokio = { version = "1.20.1", features = ["full"] }
 tokio-tar = { git = "https://github.com/danielhuang/tokio-tar", rev = "ac063a10224a9dcb16967e792c3075e0ee8bb1a7" }
 tokio-util = { version = "0.7.3", features = ["compat"] }
