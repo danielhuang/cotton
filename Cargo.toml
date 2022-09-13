@@ -18,7 +18,7 @@ futures-lite = "1.12.0"
 generational-arena = "0.2.8"
 indexmap = { version = "1.9.1", features = ["serde"] }
 indicatif = "0.17.0"
-itertools = "0.10.3"
+itertools = "0.10.4"
 nix = "0.25.0"
 node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "3af6c068bc59f58683a536cbcf683c5cec69621f" }
 notify = "=5.0.0"
