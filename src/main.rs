@@ -226,7 +226,11 @@ async fn main() -> Result<()> {
 
                 dependencies.insert(name.to_string(), Value::String(format!("^{}", latest)));
 
-                PROGRESS_BAR.println(format!("Added {} {}", name.yellow(), latest.yellow()));
+                PROGRESS_BAR.println(format!(
+                    "Added {} {}",
+                    name.yellow(),
+                    format!("^{}", latest).yellow()
+                ));
             }
 
             save_package(&package).await?;
