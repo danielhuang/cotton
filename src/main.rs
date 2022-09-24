@@ -11,6 +11,7 @@ use clap::Parser;
 use color_eyre::eyre::{ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use compact_str::{CompactString, ToCompactString};
+use futures::future::try_join_all;
 use futures::lock::Mutex;
 use futures_lite::future::race;
 use nix::sys::signal::{self, Signal};
@@ -211,8 +212,13 @@ async fn main() -> Result<()> {
                 .as_object_mut()
                 .wrap_err("`package.json` contains non-object dependencies field")?;
 
-            for name in names {
-                let res = fetch_package(name).await?;
+            for (name, res) in try_join_all(
+                names
+                    .iter()
+                    .map(|name| async move { fetch_package(name).await.map(|res| (name, res)) }),
+            )
+            .await?
+            {
                 let latest = res
                     .dist_tags
                     .get("latest")
