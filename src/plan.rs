@@ -146,6 +146,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         .get(&*dep.dist.tarball)
         .send()
         .await?
+        .error_for_status()?
         .bytes_stream()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
 

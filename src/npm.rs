@@ -80,6 +80,7 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
                 .get(format!("https://registry.npmjs.org/{}", name))
                 .send()
                 .await?
+                .error_for_status()?
                 .bytes()
                 .await?,
         )
