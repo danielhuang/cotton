@@ -10,7 +10,7 @@
 
 **Simple:** Cotton works with web applications, including those built with [React](https://reactjs.org/) or [Next.js](https://nextjs.org/).
 
-**Speedy:** Cotton aggressively employs parallel operations, maximizing network and disk throughput, without sacrificing efficiency or simplicity.
+**Speedy:** Cotton aggressively employs parallel operations, maximizing network and disk throughput, without sacrificing efficiency or simplicity. On a fast network, `cotton install` runs faster than `rm -rf node_modules`.
 
 **Trouble free:** Inspired by [Cargo](https://crates.io/), Cotton ensures that all dependencies are installed correctly when performing operations or executing package scripts.
 
