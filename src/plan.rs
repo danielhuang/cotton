@@ -182,7 +182,6 @@ pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     CACHE.get(dep, ()).await.map_err(Report::msg)
 }
 
-#[async_recursion]
 async fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
     fn hardlink_dir_sync(src: PathBuf, dst: PathBuf) -> io::Result<()> {
         std::fs::create_dir_all(&dst)?;
