@@ -150,13 +150,12 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         .bytes_stream()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
 
+    drop(permit);
+
     let reader = StreamReader::new(res);
-    let reader = BufReader::with_capacity(1024 * 1024, reader);
     let reader = GzipDecoder::new(reader);
 
     let mut archive = Archive::new(reader);
-
-    drop(permit);
 
     archive
         .unpack(&target_path)
