@@ -22,7 +22,6 @@ use tokio::{
         create_dir_all, metadata, read_dir, remove_dir_all, remove_file, set_permissions, symlink,
         File,
     },
-    io::BufReader,
     sync::Semaphore,
     task::spawn_blocking,
 };
@@ -265,9 +264,18 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
     Ok(())
 }
 
+fn warmup_dep_tree(dep: &DependencyTree) {
+    tokio::spawn(download_package_shared(dep.root.clone()));
+    for child in dep.children.values() {
+        warmup_dep_tree(child);
+    }
+}
+
 #[async_recursion]
 #[tracing::instrument]
 pub async fn install_dep_tree(prefix: &[CompactString], dep: &DependencyTree) -> Result<()> {
+    warmup_dep_tree(dep);
+
     install_package(prefix, &dep.root).await?;
 
     try_join_all(dep.children.values().map(|inner_dep| async {
