@@ -242,8 +242,6 @@ async fn main() -> Result<()> {
             }
 
             add_packages(names, *dev).await?;
-
-            install().await?;
         }
         Subcommand::Run { name, watch } => {
             join_paths()?;
