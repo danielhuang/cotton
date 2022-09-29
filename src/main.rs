@@ -65,6 +65,9 @@ pub enum Subcommand {
         /// Add to `devDependencies` instead of `dependencies`
         #[clap(short = 'D', long)]
         dev: bool,
+        /// Pin dependencies to a specific version
+        #[clap(long)]
+        pin: bool,
     },
     /// Run a script defined in package.json
     Run {
@@ -75,7 +78,11 @@ pub enum Subcommand {
     /// Clean packages installed in `node_modules` while keeping cache
     Clean,
     /// Update packages specified in package.json to the latest available version
-    Upgrade,
+    Upgrade {
+        /// Pin dependencies to a specific version
+        #[clap(long)]
+        pin: bool,
+    },
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -165,7 +172,7 @@ pub async fn init_storage() -> Result<()> {
     Ok(())
 }
 
-async fn add_packages(names: &[CompactString], dev: bool) -> Result<(), color_eyre::Report> {
+async fn add_packages(names: &[CompactString], dev: bool, pin: bool) -> Result<()> {
     let mut package = read_package_as_value().await?;
     let dependencies = package
         .as_object_mut()
@@ -191,13 +198,15 @@ async fn add_packages(names: &[CompactString], dev: bool) -> Result<(), color_ey
             .get("latest")
             .wrap_err("Package `latest` tag not specified")?;
 
-        dependencies.insert(name.to_string(), Value::String(format!("^{}", latest)));
+        let version = if pin {
+            latest.to_string()
+        } else {
+            format!("^{}", latest)
+        };
 
-        PROGRESS_BAR.println(format!(
-            "Added {} {}",
-            name.yellow(),
-            format!("^{}", latest).yellow()
-        ));
+        dependencies.insert(name.to_string(), Value::String(version.to_string()));
+
+        PROGRESS_BAR.println(format!("Added {} {}", name.yellow(), version.yellow()));
     }
 
     save_package(&package).await?;
@@ -236,12 +245,12 @@ async fn main() -> Result<()> {
                 start.elapsed().as_millis().yellow()
             ));
         }
-        Subcommand::Add { names, dev } => {
+        Subcommand::Add { names, dev, pin } => {
             if names.is_empty() {
                 PROGRESS_BAR.println("Note: no packages specified");
             }
 
-            add_packages(names, *dev).await?;
+            add_packages(names, *dev, *pin).await?;
         }
         Subcommand::Run { name, watch } => {
             join_paths()?;
@@ -307,12 +316,18 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Subcommand::Upgrade => {
+        Subcommand::Upgrade { pin } => {
             let package = read_package().await?;
-            add_packages(&package.dependencies.keys().cloned().collect_vec(), false).await?;
+            add_packages(
+                &package.dependencies.keys().cloned().collect_vec(),
+                false,
+                *pin,
+            )
+            .await?;
             add_packages(
                 &package.dev_dependencies.keys().cloned().collect_vec(),
                 true,
+                *pin,
             )
             .await?;
         }
