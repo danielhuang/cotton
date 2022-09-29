@@ -14,6 +14,7 @@ use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
 use futures::lock::Mutex;
 use futures_lite::future::race;
+use itertools::Itertools;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use npm::{fetch_package, Graph, Lockfile};
@@ -73,6 +74,8 @@ pub enum Subcommand {
     },
     /// Clean packages installed in `node_modules` while keeping cache
     Clean,
+    /// Update packages specified in package.json to the latest available version
+    Upgrade,
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -162,6 +165,46 @@ pub async fn init_storage() -> Result<()> {
     Ok(())
 }
 
+async fn add_packages(names: &[CompactString], dev: bool) -> Result<(), color_eyre::Report> {
+    let mut package = read_package_as_value().await?;
+    let dependencies = package
+        .as_object_mut()
+        .wrap_err("`package.json` is invalid")?
+        .entry(if dev {
+            "devDependencies"
+        } else {
+            "dependencies"
+        })
+        .or_insert(Value::Object(Default::default()))
+        .as_object_mut()
+        .wrap_err("`package.json` contains non-object dependencies field")?;
+
+    for (name, res) in try_join_all(
+        names
+            .iter()
+            .map(|name| async move { fetch_package(name).await.map(|res| (name, res)) }),
+    )
+    .await?
+    {
+        let latest = res
+            .dist_tags
+            .get("latest")
+            .wrap_err("Package `latest` tag not specified")?;
+
+        dependencies.insert(name.to_string(), Value::String(format!("^{}", latest)));
+
+        PROGRESS_BAR.println(format!(
+            "Added {} {}",
+            name.yellow(),
+            format!("^{}", latest).yellow()
+        ));
+    }
+
+    save_package(&package).await?;
+
+    Ok(())
+}
+
 pub static ARGS: Lazy<Args> = Lazy::new(Args::parse);
 
 #[tokio::main]
@@ -198,42 +241,7 @@ async fn main() -> Result<()> {
                 PROGRESS_BAR.println("Note: no packages specified");
             }
 
-            let mut package = read_package_as_value().await?;
-
-            let dependencies = package
-                .as_object_mut()
-                .wrap_err("`package.json` is invalid")?
-                .entry(if *dev {
-                    "devDependencies"
-                } else {
-                    "dependencies"
-                })
-                .or_insert(Value::Object(Default::default()))
-                .as_object_mut()
-                .wrap_err("`package.json` contains non-object dependencies field")?;
-
-            for (name, res) in try_join_all(
-                names
-                    .iter()
-                    .map(|name| async move { fetch_package(name).await.map(|res| (name, res)) }),
-            )
-            .await?
-            {
-                let latest = res
-                    .dist_tags
-                    .get("latest")
-                    .wrap_err("Package `latest` tag not specified")?;
-
-                dependencies.insert(name.to_string(), Value::String(format!("^{}", latest)));
-
-                PROGRESS_BAR.println(format!(
-                    "Added {} {}",
-                    name.yellow(),
-                    format!("^{}", latest).yellow()
-                ));
-            }
-
-            save_package(&package).await?;
+            add_packages(names, *dev).await?;
 
             install().await?;
         }
@@ -300,6 +308,15 @@ async fn main() -> Result<()> {
                     remove_file(item.path())?;
                 }
             }
+        }
+        Subcommand::Upgrade => {
+            let package = read_package().await?;
+            add_packages(&package.dependencies.keys().cloned().collect_vec(), false).await?;
+            add_packages(
+                &package.dev_dependencies.keys().cloned().collect_vec(),
+                true,
+            )
+            .await?;
         }
     }
 
