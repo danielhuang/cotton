@@ -114,10 +114,12 @@ pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> Result<T>
 }
 
 pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result<()> {
-    File::create(path)
-        .await?
-        .write_all(serde_json::to_string_pretty(&data)?.as_bytes())
+    let mut file = File::create(path).await?;
+
+    file.write_all(serde_json::to_string_pretty(&data)?.as_bytes())
         .await?;
+
+    file.flush().await?;
 
     Ok(())
 }
