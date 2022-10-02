@@ -8,7 +8,7 @@ mod util;
 mod watch;
 
 use clap::Parser;
-use color_eyre::eyre::{ContextCompat, Result};
+use color_eyre::eyre::{eyre, ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
@@ -27,7 +27,7 @@ use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::{env, path::PathBuf, process::exit, time::Instant};
 #[cfg(target_os = "linux")]
 use tikv_jemallocator::Jemalloc;
-use tokio::fs::create_dir_all;
+use tokio::fs::{create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
@@ -214,6 +214,22 @@ async fn add_packages(names: &[CompactString], dev: bool, pin: bool) -> Result<(
     Ok(())
 }
 
+pub async fn shell() -> Result<String> {
+    for candidate in [
+        "/bin/zsh",
+        "/usr/bin/zsh",
+        "/bin/bash",
+        "/usr/bin/bash",
+        "/bin/sh",
+        "/usr/bin/sh",
+    ] {
+        if metadata(candidate).await.is_ok() {
+            return Ok(candidate.to_string());
+        }
+    }
+    Err(eyre!("No shell found"))
+}
+
 pub static ARGS: Lazy<Args> = Lazy::new(Args::parse);
 
 #[tokio::main]
@@ -282,7 +298,10 @@ async fn main() -> Result<()> {
 
                         install().await?;
 
-                        let mut child = Command::new("sh").arg("-c").arg(script).spawn()?;
+                        let mut child = Command::new(&shell().await?)
+                            .arg("-c")
+                            .arg(script)
+                            .spawn()?;
 
                         *child_pid.lock().await = child.id();
 
