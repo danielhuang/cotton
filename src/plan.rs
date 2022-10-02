@@ -32,7 +32,7 @@ use crate::{
     cache::Cache,
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
-    progress::{log_progress, log_verbose, log_warning},
+    progress::{log_progress, log_verbose, log_warning, PROGRESS_BAR},
     scoped_path::scoped_join,
     util::{retry, VersionReq, CLIENT, CLIENT_LIMIT},
 };
@@ -227,6 +227,15 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
 
     target_path = scoped_join("node_modules", target_path)?;
 
+    let install_marker = target_path.join(format!(".installed!{}", dep.id()));
+    if metadata(&install_marker).await.is_ok() {
+        log_verbose(&format!(
+            "Skipping installation for {}",
+            dep.id().bright_blue()
+        ));
+        return Ok(());
+    }
+
     let _ = remove_dir_all(&target_path).await;
 
     let src_path = scoped_join("node_modules/.cotton/store", dep.id())?;
@@ -258,6 +267,8 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
             }
         }
     }
+
+    File::create(&install_marker).await?;
 
     log_progress(&format!("Installed {}", dep.id().bright_blue()));
 

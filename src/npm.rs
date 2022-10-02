@@ -16,6 +16,7 @@ use std::fmt::Debug;
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem::take,
+    path::MAIN_SEPARATOR,
     sync::Arc,
 };
 use tokio::{
@@ -184,7 +185,7 @@ pub struct Dependency {
 
 impl Dependency {
     pub fn id(&self) -> String {
-        format!("{}@{}", self.name, self.version)
+        format!("{}@{}", self.name, self.version).replace(MAIN_SEPARATOR, "!")
     }
 }
 
