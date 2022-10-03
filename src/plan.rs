@@ -32,7 +32,7 @@ use crate::{
     cache::Cache,
     npm::{flatten_dep_trees, Dependency, DependencyTree},
     package::Package,
-    progress::{log_progress, log_verbose, log_warning, PROGRESS_BAR},
+    progress::{log_progress, log_verbose, log_warning},
     scoped_path::scoped_join,
     util::{retry, VersionReq, CLIENT, CLIENT_LIMIT},
 };
