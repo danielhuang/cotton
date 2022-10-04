@@ -129,6 +129,38 @@ pub async fn verify_installation(package: &Package, plan: &Plan) -> Result<bool>
     Ok(installed.satisfies(package))
 }
 
+async fn post_script(name: &str) -> Result<()> {
+    let package = read_package().await?;
+
+    join_paths()?;
+
+    let script_key: &str = &("post".to_owned() + &name.to_owned());
+
+    if !package.scripts.contains_key(script_key) {
+        return Ok(());
+    }
+
+    PROGRESS_BAR.suspend(|| println!("Running {}", script_key));
+    let script = package
+        .scripts
+        .get(script_key)
+        .wrap_err(format!("Script `{}` is not defined", script_key))?
+        .as_str()
+        .wrap_err(format!("Script `{}` is not a string", script_key))?;
+
+    let mut child = Command::new(&shell().await?)
+        .arg("-c")
+        .arg(script)
+        .spawn()?;
+
+    let exit_code = child.wait().await?.code();
+
+    if let Some(exit_code) = exit_code {
+        exit(exit_code);
+    }
+    Ok(())
+}
+
 async fn install() -> Result<()> {
     let package = read_package().await?;
 
@@ -150,6 +182,8 @@ async fn install() -> Result<()> {
     }
 
     PROGRESS_BAR.finish_and_clear();
+
+    post_script("install").await?;
 
     Ok(())
 }
