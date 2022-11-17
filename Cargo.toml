@@ -16,7 +16,7 @@ dashmap = { version = "5.4.0", features = ["serde"] }
 futures = "0.3.25"
 futures-lite = "1.12.0"
 generational-arena = "0.2.8"
-indexmap = { version = "1.9.1", features = ["serde"] }
+indexmap = { version = "1.9.2", features = ["serde"] }
 indicatif = "0.17.2"
 itertools = "0.10.5"
 nix = "0.25.0"
