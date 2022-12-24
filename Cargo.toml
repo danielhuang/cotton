@@ -19,6 +19,7 @@ generational-arena = "0.2.8"
 indexmap = { version = "1.9.2", features = ["serde"] }
 indicatif = "0.17.2"
 itertools = "0.10.5"
+mimalloc = { version = "0.1.32", default-features = false }
 nix = "0.26.1"
 node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "3af6c068bc59f58683a536cbcf683c5cec69621f" }
 notify = "=5.0.0"

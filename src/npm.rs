@@ -119,7 +119,7 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Subpackage)> {
             .dist_tags
             .get(tag)
             .wrap_err_with(|| eyre!("Version cannot be satisfied: {} {}", d.name, d.version))?;
-        let version = Version::parse(&tag)?;
+        let version = Version::parse(tag)?;
         let package = res.versions.get(&version).wrap_err_with(|| {
             eyre!(
                 "Tag refers to a version that does not exist: {} - {} refers to {}",

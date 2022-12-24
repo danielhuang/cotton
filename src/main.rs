@@ -15,6 +15,7 @@ use futures::future::try_join_all;
 use futures::lock::Mutex;
 use futures_lite::future::race;
 use itertools::Itertools;
+use mimalloc::MiMalloc;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use npm::{fetch_package, Graph, Lockfile};
@@ -25,8 +26,6 @@ use progress::log_progress;
 use serde_json::Value;
 use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::{env, path::PathBuf, process::exit, time::Instant};
-#[cfg(target_os = "linux")]
-use tikv_jemallocator::Jemalloc;
 use tokio::fs::{create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
@@ -40,9 +39,8 @@ use crate::{
     progress::PROGRESS_BAR,
 };
 
-#[cfg(target_os = "linux")]
 #[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -159,7 +157,7 @@ fn join_paths() -> Result<()> {
         let mut paths = env::split_paths(&path).collect::<Vec<_>>();
         paths.push(PathBuf::from("node_modules/.bin"));
         let new_path = env::join_paths(paths)?;
-        env::set_var("PATH", &new_path);
+        env::set_var("PATH", new_path);
     }
 
     Ok(())
@@ -298,10 +296,8 @@ async fn main() -> Result<()> {
 
                         install().await?;
 
-                        let mut child = Command::new(&shell().await?)
-                            .arg("-c")
-                            .arg(script)
-                            .spawn()?;
+                        let mut child =
+                            Command::new(shell().await?).arg("-c").arg(script).spawn()?;
 
                         *child_pid.lock().await = child.id();
 

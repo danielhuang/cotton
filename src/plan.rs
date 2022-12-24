@@ -190,7 +190,7 @@ async fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
             if ty.is_dir() {
                 hardlink_dir_sync(entry.path(), dst.join(entry.file_name()))?;
             } else {
-                std::fs::hard_link(entry.path(), &dst.join(entry.file_name()))?;
+                std::fs::hard_link(entry.path(), dst.join(entry.file_name()))?;
             }
         }
         Ok(())
@@ -294,10 +294,7 @@ pub async fn install_dep_tree(prefix: &[CompactString], dep: &DependencyTree) ->
         prefix.push(dep.root.name.clone());
 
         let inner_dep = inner_dep.clone();
-
-        tokio::spawn(async move { install_dep_tree(&prefix, &inner_dep).await })
-            .await
-            .unwrap()?;
+        install_dep_tree(&prefix, &inner_dep).await?;
 
         Ok(()) as Result<_>
     }))
