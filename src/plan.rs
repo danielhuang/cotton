@@ -1,11 +1,10 @@
 use async_compression::tokio::bufread::GzipDecoder;
-use async_recursion::async_recursion;
 use color_eyre::{
     eyre::{eyre, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
-use futures::{future::try_join_all, TryStreamExt};
+use futures::TryStreamExt;
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
@@ -22,8 +21,11 @@ use tokio::{
         create_dir_all, metadata, read_dir, remove_dir_all, remove_file, set_permissions, symlink,
         File,
     },
-    sync::Semaphore,
-    task::spawn_blocking,
+    sync::{
+        mpsc::{unbounded_channel, UnboundedSender},
+        Semaphore,
+    },
+    task::{spawn_blocking, JoinHandle},
 };
 use tokio_tar::Archive;
 use tokio_util::io::StreamReader;
@@ -282,34 +284,39 @@ fn warmup_dep_tree(dep: &DependencyTree) {
     }
 }
 
-#[async_recursion]
-#[tracing::instrument]
-pub async fn install_dep_tree(prefix: &[CompactString], dep: &DependencyTree) -> Result<()> {
-    warmup_dep_tree(dep);
-
-    install_package(prefix, &dep.root).await?;
-
-    try_join_all(dep.children.values().map(|inner_dep| async {
-        let mut prefix = prefix.to_vec();
-        prefix.push(dep.root.name.clone());
-
-        let inner_dep = inner_dep.clone();
-        install_dep_tree(&prefix, &inner_dep).await?;
-
-        Ok(()) as Result<_>
-    }))
-    .await?;
-
-    Ok(())
-}
-
 pub async fn execute_plan(plan: &Plan) -> Result<()> {
-    try_join_all(plan.trees.values().cloned().map(|x| async move {
-        tokio::spawn(async move { install_dep_tree(&[], &x).await })
-            .await
-            .unwrap()
-    }))
-    .await?;
+    let (send, mut recv) = unbounded_channel();
+
+    fn queue_install(
+        send: UnboundedSender<JoinHandle<Result<()>>>,
+        tree: Arc<DependencyTree>,
+        prefix: Vec<CompactString>,
+    ) -> Result<()> {
+        send.clone().send(tokio::spawn(async move {
+            install_package(&prefix, &tree.root).await?;
+
+            for dep in tree.children.values() {
+                let mut prefix = prefix.clone();
+                prefix.push(tree.root.name.clone());
+                queue_install(send.clone(), dep.clone(), prefix)?;
+            }
+
+            Result::Ok(())
+        }))?;
+
+        Ok(())
+    }
+
+    for tree in plan.trees.values() {
+        warmup_dep_tree(tree);
+        queue_install(send.clone(), Arc::new(tree.clone()), vec![])?;
+    }
+
+    drop(send);
+
+    while let Some(x) = recv.recv().await {
+        x.await??;
+    }
 
     Ok(())
 }
