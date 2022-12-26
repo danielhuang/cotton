@@ -140,11 +140,13 @@ async fn install() -> Result<()> {
         execute_plan(&plan).await?;
         write_json("node_modules/.cotton/plan.json", &plan).await?;
 
-        PROGRESS_BAR.println(format!(
-            "Installed {} packages in {}ms",
-            tree_size(&plan.trees).yellow(),
-            start.elapsed().as_millis().yellow()
-        ));
+        PROGRESS_BAR.suspend(|| {
+            println!(
+                "Installed {} packages in {}ms",
+                tree_size(&plan.trees).yellow(),
+                start.elapsed().as_millis().yellow()
+            )
+        });
     }
 
     PROGRESS_BAR.finish_and_clear();
@@ -204,7 +206,7 @@ async fn add_packages(names: &[CompactString], dev: bool, pin: bool) -> Result<(
 
         dependencies.insert(name.to_string(), Value::String(version.to_string()));
 
-        PROGRESS_BAR.println(format!("Added {} {}", name.yellow(), version.yellow()));
+        PROGRESS_BAR.suspend(|| println!("Added {} {}", name.yellow(), version.yellow()));
     }
 
     save_package(&package).await?;
@@ -253,15 +255,17 @@ async fn main() -> Result<()> {
             graph.append(package.iter_with_dev()).await?;
             write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
 
-            PROGRESS_BAR.println(format!(
-                "Prepared {} packages in {}ms",
-                graph.relations.len().yellow(),
-                start.elapsed().as_millis().yellow()
-            ));
+            PROGRESS_BAR.suspend(|| {
+                println!(
+                    "Prepared {} packages in {}ms",
+                    graph.relations.len().yellow(),
+                    start.elapsed().as_millis().yellow()
+                )
+            });
         }
         Subcommand::Add { names, dev, pin } => {
             if names.is_empty() {
-                PROGRESS_BAR.println("Note: no packages specified");
+                PROGRESS_BAR.suspend(|| println!("Note: no packages specified"));
             }
 
             add_packages(names, *dev, *pin).await?;
@@ -275,11 +279,13 @@ async fn main() -> Result<()> {
                 race(
                     async {
                         let event = async_watch(watch.iter().map(|x| x.as_ref())).await?;
-                        PROGRESS_BAR.println(format!(
-                            "{} File modified: {}",
-                            " WATCH ".on_purple(),
-                            event.paths[0].to_string_lossy()
-                        ));
+                        PROGRESS_BAR.suspend(|| {
+                            println!(
+                                "{} File modified: {}",
+                                " WATCH ".on_purple(),
+                                event.paths[0].to_string_lossy()
+                            )
+                        });
                         PROGRESS_BAR.finish_and_clear();
 
                         Ok(())

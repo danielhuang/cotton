@@ -19,12 +19,12 @@ pub static PROGRESS_BAR: Lazy<ProgressBar> = Lazy::new(|| {
 
 pub fn log_verbose(text: &str) {
     if ARGS.verbose {
-        PROGRESS_BAR.println(format!("{} {}", " VERBOSE ".on_white(), text));
+        PROGRESS_BAR.suspend(|| println!("{} {}", " VERBOSE ".on_white(), text));
     }
 }
 
 pub fn log_warning(text: &str) {
-    PROGRESS_BAR.println(format!("{} {}", " WARNING ".on_yellow(), text));
+    PROGRESS_BAR.suspend(|| println!("{} {}", " WARNING ".on_yellow(), text));
 }
 
 pub fn log_progress(text: &str) {
