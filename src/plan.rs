@@ -21,10 +21,7 @@ use tokio::{
         create_dir_all, metadata, read_dir, remove_dir_all, remove_file, set_permissions, symlink,
         File,
     },
-    sync::{
-        mpsc::{unbounded_channel, UnboundedSender},
-        Semaphore,
-    },
+    sync::Semaphore,
     task::{spawn_blocking, JoinHandle},
 };
 use tokio_tar::Archive;
@@ -285,7 +282,7 @@ fn warmup_dep_tree(dep: &DependencyTree) {
 }
 
 pub async fn execute_plan(plan: &Plan) -> Result<()> {
-    let (send, mut recv) = flume::unbounded();
+    let (send, recv) = flume::unbounded();
 
     fn queue_install(
         send: flume::Sender<JoinHandle<Result<()>>>,
