@@ -285,10 +285,10 @@ fn warmup_dep_tree(dep: &DependencyTree) {
 }
 
 pub async fn execute_plan(plan: &Plan) -> Result<()> {
-    let (send, mut recv) = unbounded_channel();
+    let (send, mut recv) = flume::unbounded();
 
     fn queue_install(
-        send: UnboundedSender<JoinHandle<Result<()>>>,
+        send: flume::Sender<JoinHandle<Result<()>>>,
         tree: Arc<DependencyTree>,
         prefix: Vec<CompactString>,
     ) -> Result<()> {
@@ -314,7 +314,7 @@ pub async fn execute_plan(plan: &Plan) -> Result<()> {
 
     drop(send);
 
-    while let Some(x) = recv.recv().await {
+    while let Ok(x) = recv.recv_async().await {
         x.await??;
     }
 

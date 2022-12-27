@@ -19,13 +19,7 @@ use std::{
     path::MAIN_SEPARATOR,
     sync::Arc,
 };
-use tokio::{
-    sync::{
-        mpsc::{unbounded_channel, UnboundedSender},
-        Semaphore,
-    },
-    task::JoinHandle,
-};
+use tokio::{sync::Semaphore, task::JoinHandle};
 
 use crate::{
     cache::Cache,
@@ -216,7 +210,7 @@ pub struct Graph {
 impl Graph {
     pub async fn append(&mut self, remaining: impl Iterator<Item = DepReq>) -> Result<()> {
         fn queue_resolve(
-            send: UnboundedSender<JoinHandle<Result<()>>>,
+            send: flume::Sender<JoinHandle<Result<()>>>,
             req: DepReq,
             relations: Arc<DashMap<DepReq, Option<(Version, Subpackage)>>>,
         ) -> Result<()> {
@@ -257,7 +251,7 @@ impl Graph {
                 .collect(),
         );
 
-        let (send, mut recv) = unbounded_channel();
+        let (send, recv) = flume::unbounded();
 
         for req in remaining {
             queue_resolve(send.clone(), req, relations.clone())?;
@@ -265,7 +259,7 @@ impl Graph {
 
         drop(send);
 
-        while let Some(f) = recv.recv().await {
+        while let Ok(f) = recv.recv_async().await {
             f.await??;
         }
 
