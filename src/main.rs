@@ -45,7 +45,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
-    #[clap(short, long)]
+    #[clap(short, long, global = true)]
     verbose: bool,
     #[clap(subcommand)]
     cmd: Subcommand,
