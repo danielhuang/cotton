@@ -3,10 +3,6 @@ task:
     dockerfile: Dockerfile
     cpu: 2
     greedy: true
-  registry_cache:
-    folder: $CARGO_HOME/registry
-  target_cache:
-    folder: target
   matrix:
     - name: Build
       build_script: RUSTFLAGS="-C target-feature=+crt-static" cargo build --target x86_64-unknown-linux-gnu --release
