@@ -208,11 +208,16 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub async fn append(&mut self, remaining: impl Iterator<Item = DepReq>) -> Result<()> {
+    pub async fn append(
+        &mut self,
+        remaining: impl Iterator<Item = DepReq>,
+        download: bool,
+    ) -> Result<()> {
         fn queue_resolve(
             send: flume::Sender<JoinHandle<Result<()>>>,
             req: DepReq,
             relations: Arc<DashMap<DepReq, Option<(Version, Subpackage)>>>,
+            download: bool,
         ) -> Result<()> {
             if relations.contains_key(&req) {
                 return Ok(());
@@ -223,7 +228,7 @@ impl Graph {
             send.clone().send(tokio::spawn(async move {
                 let (version, subpackage) = fetch_dep_single(req.clone()).await?;
 
-                if subpackage.supported() {
+                if download && subpackage.supported() {
                     tokio::spawn(download_package_shared(Dependency {
                         name: req.name.to_compact_string(),
                         version: version.clone(),
@@ -235,7 +240,7 @@ impl Graph {
                 relations.insert(req, Some((version, subpackage.clone())));
 
                 for child_req in subpackage.iter() {
-                    queue_resolve(send.clone(), child_req, relations.clone())?;
+                    queue_resolve(send.clone(), child_req, relations.clone(), download)?;
                 }
 
                 Ok(()) as Result<_>
@@ -254,7 +259,7 @@ impl Graph {
         let (send, recv) = flume::unbounded();
 
         for req in remaining {
-            queue_resolve(send.clone(), req, relations.clone())?;
+            queue_resolve(send.clone(), req, relations.clone(), download)?;
         }
 
         drop(send);

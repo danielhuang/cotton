@@ -22,7 +22,7 @@ use npm::{fetch_package, Graph, Lockfile};
 use once_cell::sync::Lazy;
 use package::Package;
 use plan::{flatten, tree_size};
-use progress::log_progress;
+use progress::{log_progress, log_verbose};
 use serde_json::Value;
 use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::{env, path::PathBuf, process::exit, time::Instant};
@@ -87,7 +87,7 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     log_progress("Preparing");
 
     let mut graph: Graph = read_json("cotton.lock").await.unwrap_or_default();
-    graph.append(package.iter_with_dev()).await?;
+    graph.append(package.iter_with_dev(), true).await?;
     write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
 
     log_progress("Retrieved dependency graph");
@@ -136,7 +136,9 @@ async fn install() -> Result<()> {
 
     let plan = prepare_plan(&package).await?;
 
-    if !matches!(verify_installation(&package, &plan).await, Ok(true)) {
+    if matches!(verify_installation(&package, &plan).await, Ok(true)) {
+        log_verbose("Packages already installed")
+    } else {
         execute_plan(&plan).await?;
         write_json("node_modules/.cotton/plan.json", &plan).await?;
 
@@ -252,7 +254,7 @@ async fn main() -> Result<()> {
             let start = Instant::now();
 
             let mut graph = Graph::default();
-            graph.append(package.iter_with_dev()).await?;
+            graph.append(package.iter_with_dev(), false).await?;
             write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
 
             PROGRESS_BAR.suspend(|| {
