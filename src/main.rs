@@ -17,13 +17,14 @@ use futures_lite::future::race;
 use itertools::Itertools;
 use mimalloc::MiMalloc;
 use nix::sys::signal::{self, Signal};
-use nix::unistd::Pid;
+use nix::unistd::{execvp, Pid};
 use npm::{fetch_package, Graph, Lockfile};
 use once_cell::sync::Lazy;
 use package::Package;
 use plan::{flatten, tree_size};
 use progress::{log_progress, log_verbose};
 use serde_json::Value;
+use std::ffi::CString;
 use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tokio::fs::{create_dir_all, metadata};
@@ -81,6 +82,8 @@ pub enum Subcommand {
         #[clap(long)]
         pin: bool,
     },
+    /// Execute a command that is not specified as a script
+    Exec { exe: String, args: Vec<String> },
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -356,6 +359,25 @@ async fn main() -> Result<()> {
                 *pin,
             )
             .await?;
+        }
+        Subcommand::Exec { exe, args } => {
+            let exe = CString::new(exe.as_bytes().to_vec())
+                .map_err(|_| eyre!("supplied path does not satisfy C-string requirements"))?;
+
+            let mut args = args
+                .iter()
+                .map(|x| {
+                    CString::new(x.as_bytes().to_vec()).map_err(|_| {
+                        eyre!("supplied argument does not satisfy C-string requirements")
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            args.insert(0, exe.clone());
+
+            install().await?;
+            join_paths()?;
+
+            execvp(&exe, &args)?;
         }
     }
 
