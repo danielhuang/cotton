@@ -276,7 +276,7 @@ async fn main() -> Result<()> {
             join_paths()?;
 
             loop {
-                let child_pid = Mutex::new(None);
+                let child_mutex = Mutex::new(None);
 
                 race(
                     async {
@@ -304,12 +304,12 @@ async fn main() -> Result<()> {
 
                         install().await?;
 
-                        let mut child =
-                            Command::new(shell().await?).arg("-c").arg(script).spawn()?;
+                        let child = Command::new(shell().await?).arg("-c").arg(script).spawn()?;
 
-                        *child_pid.lock().await = child.id();
+                        let mut child_mutex = child_mutex.lock().await;
+                        *child_mutex = Some(child);
 
-                        let exit_code = child.wait().await?.code();
+                        let exit_code = child_mutex.as_mut().unwrap().wait().await?.code();
 
                         if let Some(exit_code) = exit_code {
                             exit(exit_code);
@@ -320,9 +320,12 @@ async fn main() -> Result<()> {
                 )
                 .await?;
 
-                let pid = *child_pid.lock().await;
-                if let Some(pid) = pid {
-                    signal::kill(Pid::from_raw(pid as _), Signal::SIGINT)?;
+                let mut child = child_mutex.lock().await;
+                if let Some(child) = child.as_mut() {
+                    if let Some(pid) = child.id() {
+                        signal::kill(Pid::from_raw(pid as _), Signal::SIGINT)?;
+                        child.wait().await?;
+                    }
                 }
             }
         }
