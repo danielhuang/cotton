@@ -84,6 +84,13 @@ pub enum Subcommand {
     },
     /// Execute a command that is not specified as a script
     Exec { exe: String, args: Vec<String> },
+    /// Remove package from package.json
+    Remove {
+        names: Vec<CompactString>,
+        /// Remove from `devDependencies` instead of `dependencies`
+        #[clap(short = 'D', long)]
+        dev: bool,
+    },
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -378,6 +385,34 @@ async fn main() -> Result<()> {
             join_paths()?;
 
             execvp(&exe, &args)?;
+        }
+        Subcommand::Remove { names, dev } => {
+            if names.is_empty() {
+                PROGRESS_BAR.suspend(|| println!("Note: no packages specified"));
+            }
+
+            let mut package = read_package_as_value().await?;
+            let dependencies = package
+                .as_object_mut()
+                .wrap_err("`package.json` is invalid")?
+                .entry(if *dev {
+                    "devDependencies"
+                } else {
+                    "dependencies"
+                })
+                .or_insert(Value::Object(Default::default()))
+                .as_object_mut()
+                .wrap_err("`package.json` contains non-object dependencies field")?;
+
+            for name in names {
+                dependencies
+                    .remove(&name.to_string())
+                    .wrap_err(eyre!("Package `{name}` is not specified in `package.json`"))?;
+            }
+
+            log_progress(&format!("Removed {} dependencies", names.len()));
+
+            save_package(&package).await?;
         }
     }
 
