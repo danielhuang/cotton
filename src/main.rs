@@ -10,6 +10,7 @@ mod watch;
 use clap::Parser;
 use color_eyre::eyre::{eyre, ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
+use color_eyre::Help;
 use compact_str::{CompactString, ToCompactString};
 use futures::future::try_join_all;
 use futures::lock::Mutex;
@@ -30,7 +31,7 @@ use std::{env, path::PathBuf, process::exit, time::Instant};
 use tokio::fs::{create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
-use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use util::{read_json, read_package, read_package_as_value, save_package, write_json};
 use watch::async_watch;
@@ -46,8 +47,12 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
+    /// Print verbose logs (including progress indicators)
     #[clap(short, long, global = true)]
     verbose: bool,
+    /// Prevent any modifications to the lockfile
+    #[clap(long, global = true)]
+    immutable: bool,
     #[clap(subcommand)]
     cmd: Subcommand,
 }
@@ -97,8 +102,11 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     log_progress("Preparing");
 
     let mut graph: Graph = read_json("cotton.lock").await.unwrap_or_default();
-    graph.append(package.iter_with_dev(), true).await?;
-    write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
+
+    if !ARGS.immutable {
+        graph.append(package.iter_with_dev(), true).await?;
+        write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
+    }
 
     log_progress("Retrieved dependency graph");
 
@@ -257,6 +265,12 @@ async fn main() -> Result<()> {
             install().await?;
         }
         Subcommand::Update => {
+            if ARGS.immutable {
+                return Err(
+                    eyre!("Cannot update lockfile").suggestion("Remove the --immutable flag")
+                );
+            }
+
             let package = read_package().await?;
 
             init_storage().await?;

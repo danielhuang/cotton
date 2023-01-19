@@ -27,6 +27,7 @@ use crate::{
     plan::download_package_shared,
     progress::{log_progress, log_verbose},
     util::{decode_json, retry, VersionReq, CLIENT_LIMIT, CLIENT_Z},
+    ARGS,
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -301,15 +302,25 @@ impl Graph {
         let (version, package) = self
             .relations
             .get(req)
-            .wrap_err("A transitive dependency is not found")
-            .suggestion("Regenerate the lockfile")?
+            .wrap_err("A dependency could not be found")
+            .note(format!("Attempted to find {}@{}", req.name, req.version))
+            .suggestion(if ARGS.immutable {
+                "Make sure that the lockfile is up-to-date. Passing --immutable prevents any changes to the lockfile."
+            } else {
+                "Make sure that the lockfile is consistent. Automatic resolution of merge conflicts can lead to inconsistency."
+            })?
             .clone();
 
         if !package.supported() {
             if req.optional {
                 return Ok(None);
             } else {
-                return Err(Report::msg("Required dependency is not supported"));
+                return Err(
+                    Report::msg("Required dependency is not supported").note(format!(
+                        "Package {}@{} is not supported on this platform.",
+                        req.name, req.version
+                    )),
+                );
             }
         }
 
