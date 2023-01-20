@@ -17,16 +17,21 @@ use futures::lock::Mutex;
 use futures_lite::future::race;
 use itertools::Itertools;
 use mimalloc::MiMalloc;
+use multimap::MultiMap;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::{execvp, Pid};
+use node_semver::Version;
 use npm::{fetch_package, Graph, Lockfile};
 use once_cell::sync::Lazy;
 use package::Package;
 use plan::{flatten, tree_size};
 use progress::{log_progress, log_verbose};
+use rustc_hash::FxHashSet;
 use serde_json::Value;
+use std::collections::VecDeque;
 use std::ffi::CString;
 use std::fs::{read_dir, remove_dir_all, remove_file};
+use std::sync::Arc;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tokio::fs::{create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
@@ -36,6 +41,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use util::{read_json, read_package, read_package_as_value, save_package, write_json};
 use watch::async_watch;
 
+use crate::npm::DependencyTree;
 use crate::{
     plan::{execute_plan, Plan},
     progress::PROGRESS_BAR,
@@ -95,6 +101,11 @@ pub enum Subcommand {
         /// Remove from `devDependencies` instead of `dependencies`
         #[clap(short = 'D', long)]
         dev: bool,
+    },
+    /// Find all uses of a given package
+    Why {
+        name: CompactString,
+        version: Version,
     },
 }
 
@@ -248,6 +259,28 @@ pub async fn shell() -> Result<String> {
         }
     }
     Err(eyre!("No shell found"))
+}
+
+fn build_map(
+    trees: &[Arc<DependencyTree>],
+    map: &mut MultiMap<(CompactString, Version), (CompactString, Version)>,
+) {
+    fn build_map(
+        tree: &DependencyTree,
+        map: &mut MultiMap<(CompactString, Version), (CompactString, Version)>,
+    ) {
+        for (_, child) in tree.children.iter() {
+            map.insert(
+                (child.root.name.clone(), child.root.version.clone()),
+                (tree.root.name.clone(), tree.root.version.clone()),
+            );
+            build_map(child, map);
+        }
+    }
+
+    for tree in trees {
+        build_map(tree, map);
+    }
 }
 
 pub static ARGS: Lazy<Args> = Lazy::new(Args::parse);
@@ -427,6 +460,55 @@ async fn main() -> Result<()> {
             log_progress(&format!("Removed {} dependencies", names.len()));
 
             save_package(&package).await?;
+        }
+        Subcommand::Why { name, version } => {
+            let package = read_package().await?;
+            let graph: Graph = read_json("cotton.lock").await.unwrap_or_default();
+
+            let trees = graph.build_trees(package.iter_with_dev())?;
+
+            let mut map = MultiMap::new();
+            build_map(&trees, &mut map);
+
+            let mut seen = FxHashSet::default();
+            let mut queue = VecDeque::new();
+
+            queue.push_back((name.clone(), version.clone()));
+
+            while let Some((name, version)) = queue.pop_front() {
+                if seen.insert((name.clone(), version.clone())) {
+                    let mut used = false;
+                    if let Some(v) = map.get_vec(&(name.clone(), version.clone())) {
+                        println!(
+                            "{}",
+                            format!("{}@{} is used by:", name.yellow(), version).bold()
+                        );
+                        for (name, version) in v.iter().unique() {
+                            queue.push_back((name.clone(), version.clone()));
+                            println!(" - {}@{}", name, version);
+                        }
+                        println!();
+                        used = true;
+                    }
+                    if package
+                        .iter_with_dev()
+                        .any(|x| x.name == name && x.version.satisfies(&version))
+                    {
+                        println!(
+                            "{}",
+                            format!("{}@{} is required by package.json", name.yellow(), version)
+                                .bold()
+                        );
+                        println!();
+                        used = true;
+                    }
+                    if !used {
+                        return Err(eyre!("Package {}@{} is not used", name, version));
+                    }
+                }
+            }
+
+            println!("Analyzed {} packages", seen.len().yellow());
         }
     }
 
