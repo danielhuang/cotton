@@ -105,7 +105,7 @@ pub enum Subcommand {
     /// Find all uses of a given package
     Why {
         name: CompactString,
-        version: Version,
+        version: Option<Version>,
     },
 }
 
@@ -263,22 +263,23 @@ pub async fn shell() -> Result<String> {
 
 fn build_map(
     trees: &[Arc<DependencyTree>],
-    map: &mut MultiMap<(CompactString, Version), (CompactString, Version)>,
+    map: &mut MultiMap<(CompactString, Version), Option<(CompactString, Version)>>,
 ) {
     fn build_map(
         tree: &DependencyTree,
-        map: &mut MultiMap<(CompactString, Version), (CompactString, Version)>,
+        map: &mut MultiMap<(CompactString, Version), Option<(CompactString, Version)>>,
     ) {
         for (_, child) in tree.children.iter() {
             map.insert(
                 (child.root.name.clone(), child.root.version.clone()),
-                (tree.root.name.clone(), tree.root.version.clone()),
+                Some((tree.root.name.clone(), tree.root.version.clone())),
             );
             build_map(child, map);
         }
     }
 
     for tree in trees {
+        map.insert((tree.root.name.clone(), tree.root.version.clone()), None);
         build_map(tree, map);
     }
 }
@@ -473,36 +474,52 @@ async fn main() -> Result<()> {
             let mut seen = FxHashSet::default();
             let mut queue = VecDeque::new();
 
-            queue.push_back((name.clone(), version.clone()));
+            if let Some(version) = version {
+                queue.push_back((name.clone(), version.clone()));
+            } else {
+                for (map_name, version) in map.keys() {
+                    if name == map_name {
+                        queue.push_back((name.clone(), version.clone()));
+                    }
+                }
+            }
+
+            if queue.is_empty() {
+                return Err(eyre!("Package {} is not used", name));
+            }
 
             while let Some((name, version)) = queue.pop_front() {
                 if seen.insert((name.clone(), version.clone())) {
-                    let mut used = false;
                     if let Some(v) = map.get_vec(&(name.clone(), version.clone())) {
-                        println!(
-                            "{}",
-                            format!("{}@{} is used by:", name.yellow(), version).bold()
-                        );
-                        for (name, version) in v.iter().unique() {
-                            queue.push_back((name.clone(), version.clone()));
-                            println!(" - {}@{}", name, version);
-                        }
-                        println!();
-                        used = true;
-                    }
-                    if package
-                        .iter_with_dev()
-                        .any(|x| x.name == name && x.version.satisfies(&version))
-                    {
-                        println!(
-                            "{}",
-                            format!("{}@{} is required by package.json", name.yellow(), version)
+                        if package
+                            .iter_with_dev()
+                            .any(|x| x.name == name && x.version.satisfies(&version))
+                        {
+                            println!(
+                                "{}",
+                                format!(
+                                    "{}@{} is required by package.json",
+                                    name.yellow(),
+                                    version
+                                )
                                 .bold()
-                        );
-                        println!();
-                        used = true;
-                    }
-                    if !used {
+                            );
+                            println!();
+                        }
+
+                        let v = v.iter().unique().flatten().collect_vec();
+                        if !v.is_empty() {
+                            println!(
+                                "{}",
+                                format!("{}@{} is used by:", name.yellow(), version).bold()
+                            );
+                            for (name, version) in v {
+                                queue.push_back((name.clone(), version.clone()));
+                                println!(" - {}@{}", name, version);
+                            }
+                            println!();
+                        }
+                    } else {
                         return Err(eyre!("Package {}@{} is not used", name, version));
                     }
                 }
