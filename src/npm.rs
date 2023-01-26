@@ -1,10 +1,9 @@
 use cached::proc_macro::cached;
 use color_eyre::{
     eyre::{eyre, ContextCompat, Result},
-    Help, Report,
+    Report,
 };
 use compact_str::{CompactString, ToCompactString};
-use dashmap::DashMap;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use node_semver::Version;
@@ -15,19 +14,16 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    mem::take,
     path::MAIN_SEPARATOR,
     sync::Arc,
 };
-use tokio::{sync::Semaphore, task::JoinHandle};
+use tokio::sync::Semaphore;
 
 use crate::{
     cache::Cache,
     package::{DepReq, Dist, Package, Subpackage},
-    plan::download_package_shared,
-    progress::{log_progress, log_verbose},
+    progress::log_progress,
     util::{decode_json, retry, VersionReq, CLIENT_LIMIT, CLIENT_Z},
-    ARGS,
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -104,7 +100,7 @@ pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
 
 #[tracing::instrument]
 #[cached(result)]
-async fn fetch_dep_single(d: DepReq) -> Result<(Version, Subpackage)> {
+pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
     let res = fetch_package_cached(&d.name).await?;
 
     log_progress(&format!("Fetched {}", d.name.bright_blue()));
@@ -124,7 +120,7 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Subpackage)> {
             )
         })?;
 
-        Ok((version, package.clone().sub()))
+        Ok((version, Arc::new(package.clone().sub())))
     } else {
         let (version, package) = res
             .versions
@@ -139,7 +135,7 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Subpackage)> {
                 )
             })?;
 
-        Ok((version.clone(), package.clone().sub()))
+        Ok((version.clone(), Arc::new(package.clone().sub())))
     }
 }
 
@@ -147,7 +143,7 @@ async fn fetch_dep_single(d: DepReq) -> Result<(Version, Subpackage)> {
 pub struct DependencyTree {
     #[serde(flatten)]
     pub root: Dependency,
-    pub children: FxHashMap<CompactString, Arc<DependencyTree>>,
+    pub children: FxHashMap<CompactString, DependencyTree>,
 }
 
 impl DependencyTree {
@@ -160,7 +156,7 @@ impl DependencyTree {
                 .into_iter()
                 .filter_map(|(name, tree)| {
                     if !exclude.contains(&tree.root) {
-                        Some((name, Arc::new(tree.filter(exclude))))
+                        Some((name, tree.filter(exclude)))
                     } else {
                         None
                     }
@@ -181,195 +177,5 @@ pub struct Dependency {
 impl Dependency {
     pub fn id(&self) -> String {
         format!("{}@{}", self.name, self.version).replace(MAIN_SEPARATOR, "!")
-    }
-}
-
-fn flatten_dep_tree(dep: &DependencyTree, map: &mut FxHashMap<Dependency, DependencyTree>) {
-    if map.insert(dep.root.clone(), dep.clone()).is_none() {
-        for dep in dep.children.values() {
-            flatten_dep_tree(dep, map)
-        }
-    }
-}
-
-pub fn flatten_dep_trees<'a>(
-    deps: impl Iterator<Item = &'a DependencyTree>,
-) -> FxHashMap<Dependency, DependencyTree> {
-    let mut set = Default::default();
-    for dep in deps {
-        flatten_dep_tree(dep, &mut set);
-    }
-    set
-}
-
-#[derive(Deserialize, Debug, Default, Clone)]
-pub struct Graph {
-    #[serde(flatten)]
-    pub relations: FxHashMap<DepReq, (Version, Subpackage)>,
-}
-
-impl Graph {
-    pub async fn append(
-        &mut self,
-        remaining: impl Iterator<Item = DepReq>,
-        download: bool,
-    ) -> Result<()> {
-        fn queue_resolve(
-            send: flume::Sender<JoinHandle<Result<()>>>,
-            req: DepReq,
-            relations: Arc<DashMap<DepReq, Option<(Version, Subpackage)>>>,
-            download: bool,
-        ) -> Result<()> {
-            if relations.contains_key(&req) {
-                return Ok(());
-            }
-
-            relations.insert(req.clone(), None);
-
-            send.clone().send(tokio::spawn(async move {
-                let (version, subpackage) = fetch_dep_single(req.clone()).await?;
-
-                if download && subpackage.supported() {
-                    tokio::spawn(download_package_shared(Dependency {
-                        name: req.name.to_compact_string(),
-                        version: version.clone(),
-                        dist: subpackage.dist.clone(),
-                        bins: subpackage.bins().into_iter().collect(),
-                    }));
-                }
-
-                relations.insert(req, Some((version, subpackage.clone())));
-
-                for child_req in subpackage.iter() {
-                    queue_resolve(send.clone(), child_req, relations.clone(), download)?;
-                }
-
-                Ok(()) as Result<_>
-            }))?;
-
-            Ok(())
-        }
-
-        let relations: Arc<DashMap<_, _>> = Arc::new(
-            take(&mut self.relations)
-                .into_iter()
-                .map(|x| (x.0, Some(x.1)))
-                .collect(),
-        );
-
-        let (send, recv) = flume::unbounded();
-
-        for req in remaining {
-            queue_resolve(send.clone(), req, relations.clone(), download)?;
-        }
-
-        drop(send);
-
-        while let Ok(f) = recv.recv_async().await {
-            f.await??;
-        }
-
-        self.relations = relations
-            .iter()
-            .map(|x| (x.key().clone(), x.value().clone().unwrap()))
-            .collect();
-
-        Ok(())
-    }
-
-    fn build_tree(
-        &self,
-        req: &DepReq,
-        stack: &mut Vec<(DepReq, Version)>,
-    ) -> Result<Option<Arc<DependencyTree>>> {
-        if stack
-            .iter()
-            .any(|(d2, v)| req.name == d2.name && req.version.satisfies(v))
-        {
-            log_verbose(&format!(
-                "Detected cyclic dependencies: {} > {} {}",
-                stack
-                    .iter()
-                    .map(|(r, v)| format!("{}@{}", r.name, v).bright_blue().to_string())
-                    .join(" > "),
-                req.name,
-                req.version
-            ));
-
-            return Ok(None);
-        }
-
-        let (version, package) = self
-            .relations
-            .get(req)
-            .wrap_err("A dependency could not be found")
-            .note(format!("Attempted to find {}@{}", req.name, req.version))
-            .suggestion(if ARGS.immutable {
-                "Make sure that the lockfile is up-to-date. Passing --immutable prevents any changes to the lockfile."
-            } else {
-                "Make sure that the lockfile is consistent. Automatic resolution of merge conflicts can lead to inconsistency."
-            })?
-            .clone();
-
-        if !package.supported() {
-            if req.optional {
-                return Ok(None);
-            } else {
-                return Err(
-                    Report::msg("Required dependency is not supported").note(format!(
-                        "Package {}@{} is not supported on this platform.",
-                        req.name, req.version
-                    )),
-                );
-            }
-        }
-
-        let mut deps = vec![];
-        for dep in package.iter() {
-            stack.push((req.clone(), version.clone()));
-            if let Some(tree) = self.build_tree(&dep, stack)? {
-                deps.push(tree);
-            }
-            stack.pop().unwrap();
-        }
-
-        let tree = DependencyTree {
-            children: deps
-                .into_iter()
-                .map(|x| (x.root.name.to_compact_string(), x))
-                .collect(),
-            root: Dependency {
-                name: req.name.to_compact_string(),
-                version,
-                dist: package.dist.clone(),
-                bins: package.bins().into_iter().collect(),
-            },
-        };
-
-        Ok(Some(Arc::new(tree)))
-    }
-
-    pub fn build_trees(
-        &self,
-        reqs: impl Iterator<Item = DepReq>,
-    ) -> Result<Vec<Arc<DependencyTree>>> {
-        let v: Result<Vec<_>> = reqs.map(|x| self.build_tree(&x, &mut vec![])).collect();
-        let v = v?;
-        let v = v.into_iter().flatten().collect();
-        Ok(v)
-    }
-}
-
-#[derive(Serialize, Default)]
-pub struct Lockfile {
-    #[serde(flatten)]
-    pub relations: BTreeMap<DepReq, (Version, Subpackage)>,
-}
-
-impl Lockfile {
-    pub fn new(graph: Graph) -> Self {
-        Self {
-            relations: graph.relations.into_iter().collect(),
-        }
     }
 }

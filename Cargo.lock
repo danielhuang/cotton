@@ -1172,7 +1172,7 @@ dependencies = [
 [[package]]
 name = "node-semver"
 version = "2.0.1-alpha.0"
-source = "git+https://github.com/danielhuang/node-semver-rs?rev=3af6c068bc59f58683a536cbcf683c5cec69621f#3af6c068bc59f58683a536cbcf683c5cec69621f"
+source = "git+https://github.com/danielhuang/node-semver-rs?rev=bf4b103dc88b310c9dc049433aff1a14716e1e68#bf4b103dc88b310c9dc049433aff1a14716e1e68"
 dependencies = [
  "bytecount",
  "miette",

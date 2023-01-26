@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     fmt::{Debug, Display},
+    sync::Arc,
 };
 
 use crate::{
@@ -9,6 +10,7 @@ use crate::{
 };
 use color_eyre::eyre::Result;
 use compact_str::{CompactString, ToCompactString};
+use node_semver::Version;
 use rustc_hash::FxHashMap;
 use serde::{
     de::{self},
@@ -20,7 +22,7 @@ use serde_json::Value;
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct Package {
-    pub name: Option<CompactString>,
+    pub name: CompactString,
     pub bin: Option<Bin>,
     pub dist: Dist,
     pub dependencies: BTreeMap<CompactString, VersionReq>,
@@ -45,11 +47,11 @@ impl Package {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default, Hash)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct Subpackage {
-    pub name: Option<CompactString>,
+    pub name: CompactString,
     pub dist: Dist,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<CompactString, VersionReq>,
@@ -63,19 +65,19 @@ pub struct Subpackage {
     pub bin: Option<Bin>,
 }
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Deserialize)]
+pub struct VersionedSubpackage {
+    pub package: Arc<Subpackage>,
+    pub version: Version,
+}
+
 impl Subpackage {
     pub fn bins(&self) -> BTreeMap<CompactString, CompactString> {
         match &self.bin {
             Some(Bin::Multi(x)) => x.clone().into_iter().collect(),
-            Some(Bin::Single(x)) => {
-                if let Some(name) = &self.name {
-                    [(name.to_compact_string(), x.to_compact_string())]
-                        .into_iter()
-                        .collect()
-                } else {
-                    [].into_iter().collect()
-                }
-            }
+            Some(Bin::Single(x)) => [(self.name.to_compact_string(), x.to_compact_string())]
+                .into_iter()
+                .collect(),
             None => [].into_iter().collect(),
         }
     }
@@ -93,11 +95,11 @@ impl Subpackage {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Hash)]
 #[serde(untagged)]
 pub enum Bin {
     Single(CompactString),
-    Multi(FxHashMap<CompactString, CompactString>),
+    Multi(BTreeMap<CompactString, CompactString>),
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default, PartialOrd, Ord)]
@@ -105,7 +107,7 @@ pub struct Dist {
     pub tarball: CompactString,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub struct DepReq {
     pub name: CompactString,
     pub version: VersionReq,
@@ -150,18 +152,6 @@ impl<'de> Deserialize<'de> for DepReq {
                 .map_err(de::Error::custom)?,
             optional,
         })
-    }
-}
-
-impl PartialOrd for DepReq {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.to_string().partial_cmp(&other.to_string())
-    }
-}
-
-impl Ord for DepReq {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.to_string().cmp(&other.to_string())
     }
 }
 

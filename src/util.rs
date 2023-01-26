@@ -38,7 +38,7 @@ pub fn decode_json<T: DeserializeOwned>(
     serde_path_to_error::deserialize(jd)
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum VersionReq {
     Range(Range),

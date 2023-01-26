@@ -3,6 +3,7 @@ mod npm;
 mod package;
 mod plan;
 mod progress;
+mod resolve;
 mod scoped_path;
 mod util;
 mod watch;
@@ -21,17 +22,17 @@ use multimap::MultiMap;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::{execvp, Pid};
 use node_semver::Version;
-use npm::{fetch_package, Graph, Lockfile};
+use npm::fetch_package;
 use once_cell::sync::Lazy;
 use package::Package;
-use plan::{flatten, tree_size};
+use plan::tree_size;
 use progress::{log_progress, log_verbose};
+use resolve::{Graph, Lockfile};
 use rustc_hash::FxHashSet;
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::ffi::CString;
 use std::fs::{read_dir, remove_dir_all, remove_file};
-use std::sync::Arc;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tokio::fs::{create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
@@ -112,7 +113,8 @@ pub enum Subcommand {
 async fn prepare_plan(package: &Package) -> Result<Plan> {
     log_progress("Preparing");
 
-    let mut graph: Graph = read_json("cotton.lock").await.unwrap_or_default();
+    let lockfile: Lockfile = read_json("cotton.lock").await.unwrap_or_default();
+    let mut graph = lockfile.into_graph();
 
     if !ARGS.immutable {
         graph.append(package.iter_with_dev(), true).await?;
@@ -121,17 +123,15 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
 
     log_progress("Retrieved dependency graph");
 
-    let trees = graph.build_trees(package.iter_with_dev())?;
+    let trees = graph.build_trees(&package.iter_with_dev().collect_vec())?;
     log_progress(&format!("Fetched {} root deps", trees.len().yellow()));
 
-    let mut plan = Plan::new(
+    let plan = Plan::new(
         trees
             .iter()
-            .map(|x| (x.root.name.to_compact_string(), (**x).clone()))
+            .map(|x| (x.root.name.to_compact_string(), x.clone()))
             .collect(),
     );
-
-    flatten(&mut plan.trees);
 
     log_progress(&format!(
         "Planned {} dependencies",
@@ -164,17 +164,18 @@ async fn install() -> Result<()> {
     let start = Instant::now();
 
     let plan = prepare_plan(&package).await?;
+    let size = tree_size(&plan.trees);
 
     if matches!(verify_installation(&package, &plan).await, Ok(true)) {
         log_verbose("Packages already installed")
     } else {
-        execute_plan(&plan).await?;
+        execute_plan(plan.clone()).await?;
         write_json("node_modules/.cotton/plan.json", &plan).await?;
 
         PROGRESS_BAR.suspend(|| {
             println!(
                 "Installed {} packages in {}ms",
-                tree_size(&plan.trees).yellow(),
+                size.yellow(),
                 start.elapsed().as_millis().yellow()
             )
         });
@@ -262,7 +263,7 @@ pub async fn shell() -> Result<String> {
 }
 
 fn build_map(
-    trees: &[Arc<DependencyTree>],
+    trees: &[DependencyTree],
     map: &mut MultiMap<(CompactString, Version), Option<(CompactString, Version)>>,
 ) {
     fn build_map(
@@ -466,7 +467,7 @@ async fn main() -> Result<()> {
             let package = read_package().await?;
             let graph: Graph = read_json("cotton.lock").await.unwrap_or_default();
 
-            let trees = graph.build_trees(package.iter_with_dev())?;
+            let trees = graph.build_trees(&package.iter_with_dev().collect_vec())?;
 
             let mut map = MultiMap::new();
             build_map(&trees, &mut map);

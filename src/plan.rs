@@ -14,7 +14,6 @@ use std::{
     io,
     os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 use tokio::{
     fs::{
@@ -29,14 +28,14 @@ use tokio_util::io::StreamReader;
 
 use crate::{
     cache::Cache,
-    npm::{flatten_dep_trees, Dependency, DependencyTree},
+    npm::{Dependency, DependencyTree},
     package::Package,
     progress::{log_progress, log_verbose, log_warning},
     scoped_path::scoped_join,
     util::{retry, VersionReq, CLIENT, CLIENT_LIMIT},
 };
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Plan {
     #[serde(flatten)]
     pub trees: FxHashMap<CompactString, DependencyTree>,
@@ -64,63 +63,11 @@ impl Plan {
     }
 }
 
-pub fn flatten(trees: &mut FxHashMap<CompactString, DependencyTree>) {
-    let mut flat_deps = flat_dep_trees(trees);
-    for dep in flat_deps.clone().values() {
-        if trees.contains_key(&dep.root.name) {
-            flat_deps.remove(&dep.root);
-        }
-    }
-    let mut hoisted: FxHashMap<_, DependencyTree> = FxHashMap::default();
-    for dep in flat_deps.values() {
-        if let Some(prev) = hoisted.get(&dep.root.name) {
-            if dep.root.version > prev.root.version {
-                hoisted.insert(dep.root.name.to_compact_string(), dep.clone());
-            }
-        } else {
-            hoisted.insert(dep.root.name.to_compact_string(), dep.clone());
-        }
-    }
-    for item in hoisted.values() {
-        trees.insert(item.root.name.to_compact_string(), item.clone());
-    }
-    let roots = trees.values().cloned().map(|x| x.root).collect();
-    for tree in trees.values_mut() {
-        *tree = tree.filter(&roots);
-    }
-    for tree in trees.values_mut() {
-        let mut children = tree
-            .children
-            .iter()
-            .map(|(name, item)| (name.clone(), (**item).clone()))
-            .collect();
-        flatten(&mut children);
-        tree.children = children
-            .into_iter()
-            .map(|(name, item)| (name, Arc::new(item)))
-            .collect();
-    }
-}
-
-pub fn flat_dep_trees(
-    trees: &FxHashMap<CompactString, DependencyTree>,
-) -> FxHashMap<Dependency, DependencyTree> {
-    flatten_dep_trees(trees.values())
-}
-
-pub fn tree_size_arc(trees: &FxHashMap<CompactString, Arc<DependencyTree>>) -> usize {
-    trees.len()
-        + trees
-            .values()
-            .map(|x| tree_size_arc(&x.children))
-            .sum::<usize>()
-}
-
 pub fn tree_size(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
     trees.len()
         + trees
             .values()
-            .map(|x| tree_size_arc(&x.children))
+            .map(|x| tree_size(&x.children))
             .sum::<usize>()
 }
 
@@ -281,21 +228,21 @@ fn warmup_dep_tree(dep: &DependencyTree) {
     }
 }
 
-pub async fn execute_plan(plan: &Plan) -> Result<()> {
+pub async fn execute_plan(plan: Plan) -> Result<()> {
     let (send, recv) = flume::unbounded();
 
     fn queue_install(
         send: flume::Sender<JoinHandle<Result<()>>>,
-        tree: Arc<DependencyTree>,
+        tree: DependencyTree,
         prefix: Vec<CompactString>,
     ) -> Result<()> {
         send.clone().send(tokio::spawn(async move {
             install_package(&prefix, &tree.root).await?;
 
-            for dep in tree.children.values() {
+            for (_, dep) in tree.children {
                 let mut prefix = prefix.clone();
                 prefix.push(tree.root.name.clone());
-                queue_install(send.clone(), dep.clone(), prefix)?;
+                queue_install(send.clone(), dep, prefix)?;
             }
 
             Result::Ok(())
@@ -304,9 +251,9 @@ pub async fn execute_plan(plan: &Plan) -> Result<()> {
         Ok(())
     }
 
-    for tree in plan.trees.values() {
-        warmup_dep_tree(tree);
-        queue_install(send.clone(), Arc::new(tree.clone()), vec![])?;
+    for (_, tree) in plan.trees.into_iter() {
+        warmup_dep_tree(&tree);
+        queue_install(send.clone(), tree, vec![])?;
     }
 
     drop(send);
