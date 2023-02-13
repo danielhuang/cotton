@@ -17,6 +17,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::package::Package;
 use crate::progress::log_warning;
+use crate::resolve::{Graph, Lockfile};
 
 pub const CLIENT_LIMIT: usize = 100;
 
@@ -122,4 +123,9 @@ pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result
     file.flush().await?;
 
     Ok(())
+}
+
+pub async fn create_graph() -> Graph {
+    let lockfile: Lockfile = read_json("cotton.lock").await.unwrap_or_default();
+    lockfile.into_graph()
 }

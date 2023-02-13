@@ -39,10 +39,11 @@ use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use util::{read_json, read_package, read_package_as_value, save_package, write_json};
+use util::{read_package, read_package_as_value, save_package, write_json};
 use watch::async_watch;
 
 use crate::npm::DependencyTree;
+use crate::util::create_graph;
 use crate::{
     plan::{execute_plan, Plan},
     progress::PROGRESS_BAR,
@@ -113,8 +114,7 @@ pub enum Subcommand {
 async fn prepare_plan(package: &Package) -> Result<Plan> {
     log_progress("Preparing");
 
-    let lockfile: Lockfile = read_json("cotton.lock").await.unwrap_or_default();
-    let mut graph = lockfile.into_graph();
+    let mut graph = create_graph().await;
 
     if !ARGS.immutable {
         graph.append(package.iter_with_dev(), true).await?;
@@ -465,7 +465,8 @@ async fn main() -> Result<()> {
         }
         Subcommand::Why { name, version } => {
             let package = read_package().await?;
-            let graph: Graph = read_json("cotton.lock").await.unwrap_or_default();
+
+            let graph = create_graph().await;
 
             let trees = graph.build_trees(&package.iter_with_dev().collect_vec())?;
 
