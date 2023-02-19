@@ -90,7 +90,7 @@ pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fu
         match f().await {
             Ok(x) => return Ok(x),
             Err(e) => {
-                log_warning(&format!("Retrying {}", e));
+                log_warning(&format!("Retrying {e}"));
                 last = Some(e);
             }
         }

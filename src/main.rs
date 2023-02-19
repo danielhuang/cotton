@@ -233,7 +233,7 @@ async fn add_packages(names: &[CompactString], dev: bool, pin: bool) -> Result<(
         let version = if pin {
             latest.to_string()
         } else {
-            format!("^{}", latest)
+            format!("^{latest}")
         };
 
         dependencies.insert(name.to_string(), Value::String(version.to_string()));
@@ -357,9 +357,9 @@ async fn main() -> Result<()> {
                         let script = package
                             .scripts
                             .get(name)
-                            .wrap_err(format!("Script `{}` is not defined", name))?
+                            .wrap_err(format!("Script `{name}` is not defined"))?
                             .as_str()
-                            .wrap_err(format!("Script `{}` is not a string", name))?;
+                            .wrap_err(format!("Script `{name}` is not a string"))?;
 
                         install().await?;
 
@@ -517,7 +517,7 @@ async fn main() -> Result<()> {
                             );
                             for (name, version) in v {
                                 queue.push_back((name.clone(), version.clone()));
-                                println!(" - {}@{}", name, version);
+                                println!(" - {name}@{version}");
                             }
                             println!();
                         }

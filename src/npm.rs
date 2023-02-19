@@ -69,7 +69,7 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
     retry(|| async {
         decode_json(
             &CLIENT_Z
-                .get(format!("https://registry.npmjs.org/{}", name))
+                .get(format!("https://registry.npmjs.org/{name}"))
                 .send()
                 .await?
                 .error_for_status()?

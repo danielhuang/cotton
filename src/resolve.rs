@@ -103,7 +103,7 @@ impl Graph {
             .relations
             .get(req)
             .wrap_err("A dependency could not be found")
-            .with_note(|| format!("Attempted to find {:?}", req))
+            .with_note(|| format!("Attempted to find {req:?}"))
             .with_suggestion(|| {
                 if ARGS.immutable {
                     "Make sure that the lockfile is up-to-date. Passing --immutable prevents any changes to the lockfile."
