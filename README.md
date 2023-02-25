@@ -10,9 +10,11 @@
 
 **Simple:** Cotton works with web applications, including those built with [React](https://reactjs.org/), [Next.js](https://nextjs.org/), [Vite](https://vitejs.dev/), [TypeScript](https://www.typescriptlang.org/), [ESLint](https://eslint.org/), and more.
 
-**Speedy:** Cotton aggressively employs parallel operations, maximizing network and disk throughput, without sacrificing efficiency or simplicity. With a fast network, `cotton install` runs faster than `rm -rf node_modules`.
+**Speedy:** With a fast network, `cotton install` runs faster than `rm -rf node_modules`.
 
-**Trouble free:** Inspired by [Cargo](https://crates.io/), Cotton ensures that all dependencies are installed correctly when performing operations or executing package scripts.
+**Trouble free:** Ever run into errors when you forget to run `yarn` after pulling? No more. With Cotton, `node_modules` would never get out of sync.
+
+**Quickstart** for [Netlify](#using-netlify) • [Cloudflare Pages](#using-cloudflare-pages)
 
 ## Installation
 
@@ -64,6 +66,44 @@ cotton update
 ```
 
 This will load the latest available versions of dependencies (including transitive dependencies) and save registry information to `cotton.lock`. Specified versions in `package.json` are not modified.
+
+## Using as part of CI/CD?
+
+In order to use Cotton, you have 2 options:
+- Commit the binary to the repository, working similarly to commiting Yarn 2+ (recommended)
+- Download Cotton on-demand as part of the build process
+
+If the binary is committed to the repository, use `./cotton` instead of `cotton`.
+
+### Using Netlify
+
+First, modify the configuration in `netlify.toml`, and add these lines:
+```toml
+[build.environment]
+  NPM_FLAGS="--version"
+```
+
+Make sure `yarn.lock` is not present.
+
+Add a command to remove `node_modules` from the build directory after the build finishes. Since Netlify stores its cache using tar, caching and extracting `node_modules` would be slower than reinstalling using Cotton.
+
+For example, if the build command was
+
+```sh
+cotton run build
+```
+
+Add another command to the end:
+
+```sh
+cotton run build && mv node_modules _node_modules
+```
+
+This would disable Netlify's cache.
+
+### Using Cloudflare Pages
+
+Set the environment variable `NPM_FLAGS` to `--version`. Make sure that there is no `yarn.lock` in the repository.
 
 ## Comparison with other package managers
 
