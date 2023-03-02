@@ -75,7 +75,7 @@ pub fn tree_size(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
 
 #[tracing::instrument]
 async fn download_package(dep: &Dependency) -> Result<()> {
-    let target_path = scoped_join("node_modules/.cotton/store", dep.id())?;
+    let target_path = scoped_join(".cotton/store", dep.id())?;
 
     create_dir_all(&target_path).await?;
 
@@ -202,7 +202,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
 
     let _ = remove_dir_all(&target_path).await;
 
-    let src_path = scoped_join("node_modules/.cotton/store", dep.id())?;
+    let src_path = scoped_join(".cotton/store", dep.id())?;
 
     hardlink_dir(get_package_src(&src_path).await?, target_path).await?;
 

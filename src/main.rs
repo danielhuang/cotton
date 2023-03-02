@@ -201,7 +201,8 @@ fn join_paths() -> Result<()> {
 }
 
 pub async fn init_storage() -> Result<()> {
-    create_dir_all("node_modules/.cotton/store").await?;
+    create_dir_all(".cotton/store").await?;
+    create_dir_all("node_modules/.cotton").await?;
     create_dir_all("node_modules/.bin").await?;
 
     Ok(())
