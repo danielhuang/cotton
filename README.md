@@ -29,8 +29,8 @@ cargo install --git https://github.com/danielhuang/cotton
 Download and install the compiled binary:
 
 ```
-curl -f#SL --compressed --tlsv1.2 https://api.cirrus-ci.com/v1/artifact/github/danielhuang/cotton/Build/binaries/target/x86_64-unknown-linux-gnu/release/cotton > /usr/local/bin/cotton
-chmod +x /usr/local/bin/cotton
+sudo curl -f#SL --compressed --tlsv1.2 https://api.cirrus-ci.com/v1/artifact/github/danielhuang/cotton/Build/binaries/target/x86_64-unknown-linux-gnu/release/cotton -o /usr/local/bin/cotton
+sudo chmod +x /usr/local/bin/cotton
 ```
 
 ## Get started
@@ -109,16 +109,16 @@ Set the environment variable `NPM_FLAGS` to `--version`. Make sure that there is
 
 Installing packages used by [create-react-app](https://create-react-app.dev/):
 
+![Hyperfine benchmark image](https://cdn.discordapp.com/attachments/355822466117009420/1080972798270390333/image.png)
+
 | Tool | Initial install | With lockfile only | With lockfile and cache |
 | --- | --- | --- | --- |
-| Cotton | **6.1s** | **2.7s** | **1.1s** |
-| pnpm | 19.1s | 21.5s | 5.5s |
-| Yarn | 40.9s | 26.8s | 13.9s |
-| npm | 45.7s | 28.4s | 13.4s |
+| Cotton | **4.0s** | **1.8s** | **0.3s** |
+| pnpm | 24.3s | 17.9s | 5.5s |
+| Yarn | 31.9s | 27.0s | 10.6s |
+| npm | 35.4s | 21.3s | 13.0s |
 
 See [benchmark](benchmark.md) for more information.
-
-Note: Cotton uses an internal per-project cache stored within `node_modules`. This is done to ensure that the cache is located in the same filesystem in order to allow hardlink installation.
 
 ## Limitations
 

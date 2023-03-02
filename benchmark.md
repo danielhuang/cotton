@@ -10,22 +10,19 @@ echo 'strict-peer-dependencies=false' > .npmrc
 Without cache or lockfile
 
 ```
-hyperfine --prepare 'rm -rf node_modules; pnpm store prune; yarn cache clean; npm cache clean --force; rm pnpm-lock.yaml; rm yarn.lock; rm package-lock.json; rm cotton.lock; true' 'yarn' 'pnpm i' 'cotton install' 'npm i'
+hyperfine --prepare 'rm -rf node_modules; pnpm store prune; yarn cache clean; npm cache clean --force; rm -rf .cotton; rm pnpm-lock.yaml; rm yarn.lock; rm package-lock.json; rm cotton.lock; true' 'yarn' 'pnpm i' 'cotton install' 'npm i'
 ```
 
 Lockfile only
 
 ```
-hyperfine --prepare 'rm -rf node_modules; pnpm store prune; yarn cache clean; npm cache clean --force; true' --warmup 1  'cotton install' 'pnpm i' 'yarn' 'npm i'
+hyperfine --prepare 'rm -rf node_modules; pnpm store prune; yarn cache clean; npm cache clean --force; rm -rf .cotton; true' --warmup 1  'cotton install' 'pnpm i' 'yarn' 'npm i'
 ```
 
 Lockfile and cache
 
 ```
-hyperfine --prepare 'cotton clean; true' --warmup 1 'cotton install' && \
-hyperfine --prepare 'rm -rf node_modules; true' --warmup 1 'yarn' && \
-hyperfine --prepare 'rm -rf node_modules; true' --warmup 1 'npm i' && \
-hyperfine --prepare 'rm -rf node_modules; true' --warmup 1 'pnpm i'
+hyperfine --prepare 'rm -rf node_modules; true' --warmup 1 'cotton install' 'pnpm i' 'yarn' 'npm i'
 ```
 
 ## create-react-app benchmark
@@ -80,68 +77,74 @@ These benchmarks were performed on [Gitpod](https://gitpod.io/).
 Without cache or lockfile:
 ```
 Benchmark 1: yarn
-  Time (mean ± σ):     40.895 s ±  7.631 s    [User: 30.729 s, System: 33.281 s]
-  Range (min … max):   32.474 s … 56.217 s    10 runs
- 
+  Time (mean ± σ):     31.887 s ±  0.398 s    [User: 33.810 s, System: 26.002 s]
+  Range (min … max):   31.291 s … 32.583 s    10 runs
+
 Benchmark 2: pnpm i
-  Time (mean ± σ):     19.112 s ±  0.503 s    [User: 22.420 s, System: 12.527 s]
-  Range (min … max):   18.587 s … 20.380 s    10 runs
- 
+  Time (mean ± σ):     24.293 s ±  0.890 s    [User: 34.092 s, System: 9.305 s]
+  Range (min … max):   23.104 s … 25.815 s    10 runs
+
 Benchmark 3: cotton install
-  Time (mean ± σ):      6.081 s ±  1.674 s    [User: 6.936 s, System: 10.250 s]
-  Range (min … max):    4.213 s …  8.948 s    10 runs
- 
+  Time (mean ± σ):      4.046 s ±  0.934 s    [User: 7.931 s, System: 8.355 s]
+  Range (min … max):    3.228 s …  5.865 s    10 runs
+
 Benchmark 4: npm i
-  Time (mean ± σ):     45.730 s ±  1.407 s    [User: 48.774 s, System: 12.703 s]
-  Range (min … max):   43.479 s … 48.153 s    10 runs
- 
+  Time (mean ± σ):     35.365 s ±  0.338 s    [User: 43.839 s, System: 9.632 s]
+  Range (min … max):   34.916 s … 36.194 s    10 runs
+
 Summary
   'cotton install' ran
-    3.14 ± 0.87 times faster than 'pnpm i'
-    6.72 ± 2.24 times faster than 'yarn'
-    7.52 ± 2.08 times faster than 'npm i'
+    6.00 ± 1.40 times faster than 'pnpm i'
+    7.88 ± 1.82 times faster than 'yarn'
+    8.74 ± 2.02 times faster than 'npm i'
 ```
 
 Lockfile, cleared cache
 ```
 Benchmark 1: cotton install
-  Time (mean ± σ):      2.690 s ±  0.136 s    [User: 2.981 s, System: 9.243 s]
-  Range (min … max):    2.491 s …  2.887 s    10 runs
- 
+  Time (mean ± σ):      1.765 s ±  0.396 s    [User: 2.769 s, System: 6.609 s]
+  Range (min … max):    1.468 s …  2.806 s    10 runs
+
 Benchmark 2: pnpm i
-  Time (mean ± σ):     21.516 s ±  6.232 s    [User: 22.188 s, System: 13.631 s]
-  Range (min … max):   14.378 s … 35.494 s    10 runs
- 
+  Time (mean ± σ):     17.913 s ±  0.301 s    [User: 25.494 s, System: 7.064 s]
+  Range (min … max):   17.520 s … 18.326 s    10 runs
+
 Benchmark 3: yarn
-  Time (mean ± σ):     26.857 s ±  1.292 s    [User: 24.951 s, System: 29.473 s]
-  Range (min … max):   25.523 s … 29.721 s    10 runs
- 
+  Time (mean ± σ):     26.981 s ±  0.562 s    [User: 30.559 s, System: 25.649 s]
+  Range (min … max):   25.976 s … 27.759 s    10 runs
+
 Benchmark 4: npm i
-  Time (mean ± σ):     28.406 s ±  0.487 s    [User: 39.482 s, System: 10.197 s]
-  Range (min … max):   27.807 s … 29.121 s    10 runs
- 
+  Time (mean ± σ):     21.264 s ±  0.354 s    [User: 30.141 s, System: 7.431 s]
+  Range (min … max):   20.751 s … 21.870 s    10 runs
+
 Summary
   'cotton install' ran
-    8.00 ± 2.35 times faster than 'pnpm i'
-    9.98 ± 0.70 times faster than 'yarn'
-   10.56 ± 0.56 times faster than 'npm i'
+   10.15 ± 2.28 times faster than 'pnpm i'
+   12.05 ± 2.71 times faster than 'npm i'
+   15.29 ± 3.45 times faster than 'yarn'
 ```
 
 Lockfile with cache:
 ```
 Benchmark 1: cotton install
-  Time (mean ± σ):      1.069 s ±  0.053 s    [User: 0.454 s, System: 1.539 s]
-  Range (min … max):    1.012 s …  1.192 s    10 runs
- 
-Benchmark 1: yarn
-  Time (mean ± σ):     13.885 s ±  2.046 s    [User: 11.187 s, System: 13.277 s]
-  Range (min … max):   11.369 s … 16.752 s    10 runs
- 
-Benchmark 1: npm i
-  Time (mean ± σ):     13.419 s ±  0.933 s    [User: 14.922 s, System: 8.799 s]
-  Range (min … max):   12.044 s … 15.315 s    10 runs
- 
-Benchmark 1: pnpm i
-  Time (mean ± σ):      5.511 s ±  0.318 s    [User: 4.963 s, System: 4.693 s]
-  Range (min … max):    5.211 s …  6.113 s    10 runs
+  Time (mean ± σ):     331.3 ms ±  45.4 ms    [User: 374.4 ms, System: 1433.5 ms]
+  Range (min … max):   286.6 ms … 422.4 ms    10 runs
+
+Benchmark 2: pnpm i
+  Time (mean ± σ):      5.544 s ±  0.231 s    [User: 6.865 s, System: 2.780 s]
+  Range (min … max):    5.232 s …  5.917 s    10 runs
+
+Benchmark 3: yarn
+  Time (mean ± σ):     10.566 s ±  0.162 s    [User: 11.866 s, System: 8.911 s]
+  Range (min … max):   10.324 s … 10.847 s    10 runs
+
+Benchmark 4: npm i
+  Time (mean ± σ):     13.076 s ±  0.338 s    [User: 18.000 s, System: 5.566 s]
+  Range (min … max):   12.471 s … 13.584 s    10 runs
+
+Summary
+  'cotton install' ran
+   16.73 ± 2.40 times faster than 'pnpm i'
+   31.89 ± 4.40 times faster than 'yarn'
+   39.46 ± 5.50 times faster than 'npm i'
 ```
