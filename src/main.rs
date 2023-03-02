@@ -34,7 +34,7 @@ use rustc_hash::FxHashSet;
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::ffi::CString;
-use std::fs::{read_dir, remove_dir_all, remove_file};
+use std::fs::remove_dir_all;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tokio::fs::{create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
@@ -89,7 +89,7 @@ pub enum Subcommand {
         #[clap(long)]
         watch: Vec<PathBuf>,
     },
-    /// Clean packages installed in `node_modules` while keeping cache
+    /// Clean packages installed in `node_modules` and remove cache
     Clean,
     /// Update packages specified in package.json to the latest available version
     Upgrade {
@@ -393,17 +393,8 @@ async fn main() -> Result<()> {
             }
         }
         Subcommand::Clean => {
-            remove_file("node_modules/.cotton/plan.json")?;
-            for item in read_dir("node_modules")? {
-                let item = item?;
-                let file_type = item.file_type()?;
-                if file_type.is_dir() && item.file_name() != ".cotton" {
-                    remove_dir_all(item.path())?;
-                }
-                if file_type.is_file() {
-                    remove_file(item.path())?;
-                }
-            }
+            remove_dir_all("node_modules")?;
+            remove_dir_all(".cotton")?;
         }
         Subcommand::Upgrade { pin } => {
             let package = read_package().await?;
