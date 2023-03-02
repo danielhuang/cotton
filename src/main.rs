@@ -1,4 +1,5 @@
 mod cache;
+mod config;
 mod npm;
 mod package;
 mod plan;
@@ -13,6 +14,7 @@ use color_eyre::eyre::{eyre, ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Help;
 use compact_str::{CompactString, ToCompactString};
+use config::read_config;
 use futures::future::try_join_all;
 use futures::lock::Mutex;
 use futures_lite::future::race;
@@ -160,6 +162,7 @@ async fn install() -> Result<()> {
     let package = read_package().await?;
 
     init_storage().await?;
+    read_config().await?;
 
     let start = Instant::now();
 

@@ -15,6 +15,7 @@ use std::{
     os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
 };
+use tap::Pipe;
 use tokio::{
     fs::{
         create_dir_all, metadata, read_dir, remove_dir_all, remove_file, set_permissions, symlink,
@@ -28,6 +29,7 @@ use tokio_util::io::StreamReader;
 
 use crate::{
     cache::Cache,
+    config::read_config,
     npm::{Dependency, DependencyTree},
     package::Package,
     progress::{log_progress, log_verbose, log_warning},
@@ -87,8 +89,24 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 
     log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
 
+    let registry_token = read_config()
+        .await?
+        .registry
+        .into_iter()
+        .find(|x| dep.dist.tarball.starts_with(&x.url))
+        .and_then(|x| x.auth)
+        .map(|x| x.read_token())
+        .transpose()?;
+
     let res = CLIENT
         .get(&*dep.dist.tarball)
+        .pipe(|x| {
+            if let Some(registry_auth) = registry_token {
+                x.bearer_auth(registry_auth)
+            } else {
+                x
+            }
+        })
         .send()
         .await?
         .error_for_status()?

@@ -17,10 +17,12 @@ use std::{
     path::MAIN_SEPARATOR,
     sync::Arc,
 };
+use tap::Pipe;
 use tokio::sync::Semaphore;
 
 use crate::{
     cache::Cache,
+    config::{read_config, Registry},
     package::{DepReq, Dist, Package, Subpackage},
     progress::log_progress,
     util::{decode_json, retry, VersionReq, CLIENT_LIMIT, CLIENT_Z},
@@ -61,15 +63,48 @@ impl PlatformMap {
     }
 }
 
+async fn select_registry(name: &str) -> Result<Registry> {
+    for registry in read_config().await?.registry {
+        if let Some(scope) = &registry.scope {
+            if name.starts_with(scope) {
+                return Ok(registry);
+            }
+        } else {
+            return Ok(registry);
+        }
+    }
+
+    Ok(Registry {
+        url: "https://registry.npmjs.org".into(),
+        scope: None,
+        auth: None,
+    })
+}
+
 #[tracing::instrument]
 pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
     static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(CLIENT_LIMIT));
     let _permit = S.acquire().await.unwrap();
 
+    let selected_registry = select_registry(name).await?;
+
+    let token = if let Some(auth) = selected_registry.auth {
+        Some(auth.read_token()?)
+    } else {
+        None
+    };
+
     retry(|| async {
         decode_json(
             &CLIENT_Z
-                .get(format!("https://registry.npmjs.org/{name}"))
+                .get(format!("{}/{name}", selected_registry.url))
+                .pipe(|x| {
+                    if let Some(token) = &token {
+                        x.bearer_auth(token)
+                    } else {
+                        x
+                    }
+                })
                 .send()
                 .await?
                 .error_for_status()?
