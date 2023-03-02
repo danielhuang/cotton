@@ -6,6 +6,7 @@ use tokio::fs::read_to_string;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Config {
+    #[serde(default)]
     pub registry: Vec<Registry>,
 }
 
@@ -24,6 +25,7 @@ pub enum RegistryAuth {
 }
 
 impl RegistryAuth {
+    #[tracing::instrument]
     pub fn read_token(&self) -> Result<String> {
         match self {
             RegistryAuth::Token(x) => Ok(x.clone()),

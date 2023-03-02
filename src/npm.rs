@@ -1,6 +1,6 @@
 use cached::proc_macro::cached;
 use color_eyre::{
-    eyre::{eyre, ContextCompat, Result},
+    eyre::{eyre, Context, ContextCompat, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
@@ -89,7 +89,9 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
     let selected_registry = select_registry(name).await?;
 
     let token = if let Some(auth) = selected_registry.auth {
-        Some(auth.read_token()?)
+        Some(auth.read_token().wrap_err_with(|| {
+            format!("Cannot find token for registry {}", selected_registry.url)
+        })?)
     } else {
         None
     };
@@ -116,6 +118,7 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
     .await
 }
 
+#[tracing::instrument]
 pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
     static CACHE: Lazy<Cache<CompactString, Result<Arc<RegistryResponse>, CompactString>>> =
         Lazy::new(|| {
