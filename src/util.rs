@@ -1,11 +1,13 @@
 use std::future::Future;
 use std::path::Path;
+use std::sync::Arc;
 use std::{
     env::consts::{ARCH, OS},
     fmt::Display,
 };
 
 use color_eyre::eyre::Result;
+use color_eyre::Report;
 use compact_str::CompactString;
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
@@ -129,3 +131,5 @@ pub async fn create_graph() -> Graph {
     let lockfile: Lockfile = read_json("cotton.lock").await.unwrap_or_default();
     lockfile.into_graph()
 }
+
+pub type ArcResult<T, E = Report> = Result<T, Arc<E>>;

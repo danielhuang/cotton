@@ -14,6 +14,7 @@ use std::{
     io,
     os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tap::Pipe;
 use tokio::{
@@ -29,7 +30,7 @@ use tokio_util::io::StreamReader;
 
 use crate::{
     cache::Cache,
-    config::read_config,
+    config::{client_auth, read_config},
     npm::{Dependency, DependencyTree},
     package::Package,
     progress::{log_progress, log_verbose, log_warning},
@@ -89,24 +90,16 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 
     log_verbose(&format!("Downloading {}@{}", dep.name, dep.version));
 
-    let registry_token = read_config()
+    let registry_auth = read_config()
         .await?
         .registry
         .into_iter()
         .find(|x| dep.dist.tarball.starts_with(&x.url))
-        .and_then(|x| x.auth)
-        .map(|x| x.read_token())
-        .transpose()?;
+        .and_then(|x| x.auth);
 
     let res = CLIENT
         .get(&*dep.dist.tarball)
-        .pipe(|x| {
-            if let Some(registry_auth) = registry_token {
-                x.bearer_auth(registry_auth)
-            } else {
-                x
-            }
-        })
+        .pipe(|x| client_auth(x, registry_auth.as_ref()))?
         .send()
         .await?
         .error_for_status()?
@@ -133,11 +126,11 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 }
 
 pub async fn download_package_shared(dep: Dependency) -> Result<()> {
-    static CACHE: Lazy<Cache<Dependency, Result<(), CompactString>>> = Lazy::new(|| {
+    static CACHE: Lazy<Cache<Dependency, Result<(), Arc<Report>>>> = Lazy::new(|| {
         Cache::new(|key: Dependency, _| async move {
             retry(|| async { download_package(&key).await })
                 .await
-                .map_err(|e| e.to_compact_string())
+                .map_err(Arc::new)
         })
     });
 

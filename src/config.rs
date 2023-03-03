@@ -1,5 +1,6 @@
 use cached::proc_macro::cached;
 use color_eyre::eyre::Result;
+use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use std::env;
 use tokio::fs::read_to_string;
@@ -19,17 +20,47 @@ pub struct Registry {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 #[serde(rename_all = "snake_case")]
+#[serde(untagged)]
 pub enum RegistryAuth {
-    Token(String),
-    FromEnv(String),
+    Token {
+        token: AuthSource,
+    },
+    Basic {
+        username: AuthSource,
+        #[serde(default)]
+        password: Option<AuthSource>,
+    },
 }
 
-impl RegistryAuth {
+pub fn client_auth(req: RequestBuilder, auth: Option<&RegistryAuth>) -> Result<RequestBuilder> {
+    Ok(match auth {
+        Some(RegistryAuth::Token { token }) => {
+            let token = token.read_token()?;
+            req.bearer_auth(token)
+        }
+        Some(RegistryAuth::Basic { username, password }) => {
+            let username = username.read_token()?;
+            let password = password.as_ref().map(|x| x.read_token()).transpose()?;
+            req.basic_auth(username, password)
+        }
+        None => req,
+    })
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
+#[serde(rename_all = "snake_case")]
+#[serde(untagged)]
+pub enum AuthSource {
+    Inline(String),
+    FromEnv { from_env: String },
+}
+
+impl AuthSource {
     #[tracing::instrument]
     pub fn read_token(&self) -> Result<String> {
         match self {
-            RegistryAuth::Token(x) => Ok(x.clone()),
-            RegistryAuth::FromEnv(x) => Ok(env::var(x)?),
+            AuthSource::Inline(x) => Ok(x.clone()),
+            AuthSource::FromEnv { from_env } => Ok(env::var(from_env)?),
         }
     }
 }

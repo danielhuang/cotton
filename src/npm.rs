@@ -1,6 +1,6 @@
 use cached::proc_macro::cached;
 use color_eyre::{
-    eyre::{eyre, Context, ContextCompat, Result},
+    eyre::{eyre, ContextCompat, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
@@ -22,10 +22,10 @@ use tokio::sync::Semaphore;
 
 use crate::{
     cache::Cache,
-    config::{read_config, Registry},
+    config::{client_auth, read_config, Registry},
     package::{DepReq, Dist, Package, Subpackage},
     progress::log_progress,
-    util::{decode_json, retry, VersionReq, CLIENT_LIMIT, CLIENT_Z},
+    util::{decode_json, retry, ArcResult, VersionReq, CLIENT_LIMIT, CLIENT_Z},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -88,25 +88,11 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
 
     let selected_registry = select_registry(name).await?;
 
-    let token = if let Some(auth) = selected_registry.auth {
-        Some(auth.read_token().wrap_err_with(|| {
-            format!("Cannot find token for registry {}", selected_registry.url)
-        })?)
-    } else {
-        None
-    };
-
     retry(|| async {
         decode_json(
             &CLIENT_Z
                 .get(format!("{}/{name}", selected_registry.url))
-                .pipe(|x| {
-                    if let Some(token) = &token {
-                        x.bearer_auth(token)
-                    } else {
-                        x
-                    }
-                })
+                .pipe(|x| client_auth(x, selected_registry.auth.as_ref()))?
                 .send()
                 .await?
                 .error_for_status()?
@@ -120,15 +106,11 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
 
 #[tracing::instrument]
 pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
-    static CACHE: Lazy<Cache<CompactString, Result<Arc<RegistryResponse>, CompactString>>> =
-        Lazy::new(|| {
-            Cache::new(|key: CompactString, _| async move {
-                fetch_package(&key)
-                    .await
-                    .map(Arc::new)
-                    .map_err(|e| e.to_compact_string())
-            })
-        });
+    static CACHE: Lazy<Cache<CompactString, ArcResult<Arc<RegistryResponse>>>> = Lazy::new(|| {
+        Cache::new(|key: CompactString, _| async move {
+            fetch_package(&key).await.map(Arc::new).map_err(Arc::new)
+        })
+    });
 
     CACHE
         .get(name.to_compact_string(), ())
