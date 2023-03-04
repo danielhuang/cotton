@@ -67,6 +67,14 @@ cotton update
 
 This will load the latest available versions of dependencies (including transitive dependencies) and save registry information to `cotton.lock`. Specified versions in `package.json` are not modified.
 
+### Allow install scripts
+
+If dependencies require install scripts (such as `puppeteer` or `electron`) to function, add this to `cotton.toml`:
+
+```toml
+allow_install_scripts = true
+```
+
 ## Using as part of CI/CD?
 
 In order to use Cotton, you have 2 options:
@@ -122,5 +130,4 @@ See [benchmark](benchmark.md) for more information.
 
 ## Limitations
 
-* Cotton does not currently support Git repositories, direct urls, or local paths as dependencies
-* Cotton does not execute `postinstall` scripts after installation
+* Cotton does not currently support Git repositories, direct urls, or local paths as dependencies; only registries are supported.
