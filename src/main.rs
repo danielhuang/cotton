@@ -241,7 +241,8 @@ async fn install() -> Result<()> {
 fn new_path() -> Result<OsString> {
     let path = env::var_os("PATH").unwrap_or_default();
     let mut paths = env::split_paths(&path).collect::<Vec<_>>();
-    paths.insert(0, PathBuf::from("node_modules/.bin").canonicalize()?);
+    let new = PathBuf::from("node_modules/.bin");
+    paths.insert(0, new.canonicalize().unwrap_or(new));
     let new_path = env::join_paths(paths)?;
     Ok(new_path)
 }
