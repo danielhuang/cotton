@@ -215,7 +215,6 @@ async fn install() -> Result<()> {
         log_verbose("Packages already installed")
     } else {
         execute_plan(plan.clone()).await?;
-        write_json("node_modules/.cotton/plan.json", &plan).await?;
 
         PROGRESS_BAR.suspend(|| {
             println!(
@@ -230,6 +229,8 @@ async fn install() -> Result<()> {
                 exec_install_scripts(tree, &mut vec![name.clone()]).await?;
             }
         }
+
+        write_json("node_modules/.cotton/plan.json", &plan).await?;
     }
 
     PROGRESS_BAR.finish_and_clear();
