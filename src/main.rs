@@ -34,7 +34,7 @@ use resolve::{Graph, Lockfile};
 use rustc_hash::FxHashSet;
 use serde_json::Value;
 use std::collections::VecDeque;
-use std::ffi::CString;
+use std::ffi::{CString, OsString};
 use std::fs::remove_dir_all;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tokio::fs::{create_dir_all, metadata};
@@ -175,6 +175,7 @@ async fn exec_install_script(root: &Dependency, stack: &[CompactString]) -> Resu
                 .arg("-c")
                 .arg(script)
                 .current_dir(&dir)
+                .env("PATH", new_path()?)
                 .spawn()?;
 
             if !child.wait().await?.success() {
@@ -236,13 +237,16 @@ async fn install() -> Result<()> {
     Ok(())
 }
 
+fn new_path() -> Result<OsString> {
+    let path = env::var_os("PATH").unwrap_or_default();
+    let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+    paths.insert(0, PathBuf::from("node_modules/.bin").canonicalize()?);
+    let new_path = env::join_paths(paths)?;
+    Ok(new_path)
+}
+
 fn join_paths() -> Result<()> {
-    if let Some(path) = env::var_os("PATH") {
-        let mut paths = env::split_paths(&path).collect::<Vec<_>>();
-        paths.insert(0, PathBuf::from("node_modules/.bin"));
-        let new_path = env::join_paths(paths)?;
-        env::set_var("PATH", new_path);
-    }
+    env::set_var("PATH", new_path()?);
 
     Ok(())
 }
