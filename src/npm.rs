@@ -192,6 +192,7 @@ pub struct Dependency {
     pub version: Version,
     pub dist: Dist,
     pub bins: BTreeMap<CompactString, CompactString>,
+    pub scripts: BTreeMap<CompactString, CompactString>,
 }
 
 impl Dependency {

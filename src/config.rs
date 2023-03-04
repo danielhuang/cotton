@@ -6,12 +6,16 @@ use std::env;
 use tokio::fs::read_to_string;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
     pub registry: Vec<Registry>,
+    #[serde(default)]
+    pub allow_install_scripts: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct Registry {
     pub url: String,
     pub scope: Option<String>,
@@ -21,6 +25,7 @@ pub struct Registry {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 #[serde(rename_all = "snake_case")]
 #[serde(untagged)]
+#[serde(deny_unknown_fields)]
 pub enum RegistryAuth {
     Token {
         token: AuthSource,
@@ -50,6 +55,7 @@ pub fn client_auth(req: RequestBuilder, auth: Option<&RegistryAuth>) -> Result<R
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 #[serde(rename_all = "snake_case")]
 #[serde(untagged)]
+#[serde(deny_unknown_fields)]
 pub enum AuthSource {
     Inline(String),
     FromEnv { from_env: String },

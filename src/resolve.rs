@@ -50,6 +50,7 @@ impl Graph {
                         version: version.clone(),
                         dist: subpackage.dist.clone(),
                         bins: subpackage.bins().into_iter().collect(),
+                        scripts: subpackage.scripts.clone(),
                     }));
                 }
 
@@ -144,6 +145,7 @@ impl Graph {
             version: package.version.clone(),
             dist: package.package.dist.clone(),
             bins: package.package.bins().into_iter().collect(),
+            scripts: package.package.scripts.clone(),
         };
 
         if !package.package.supported() {

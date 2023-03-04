@@ -43,6 +43,11 @@ impl Package {
             os: self.os,
             cpu: self.cpu,
             bin: self.bin,
+            scripts: self
+                .scripts
+                .iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_compact_string())))
+                .collect(),
         }
     }
 }
@@ -63,6 +68,8 @@ pub struct Subpackage {
     pub cpu: PlatformMap,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bin: Option<Bin>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub scripts: BTreeMap<CompactString, CompactString>,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Deserialize)]

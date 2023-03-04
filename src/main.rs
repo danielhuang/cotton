@@ -9,6 +9,7 @@ mod scoped_path;
 mod util;
 mod watch;
 
+use async_recursion::async_recursion;
 use clap::Parser;
 use color_eyre::eyre::{eyre, ContextCompat, Result};
 use color_eyre::owo_colors::OwoColorize;
@@ -24,7 +25,7 @@ use multimap::MultiMap;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::{execvp, Pid};
 use node_semver::Version;
-use npm::fetch_package;
+use npm::{fetch_package, Dependency};
 use once_cell::sync::Lazy;
 use package::Package;
 use plan::tree_size;
@@ -45,6 +46,7 @@ use util::{read_package, read_package_as_value, save_package, write_json};
 use watch::async_watch;
 
 use crate::npm::DependencyTree;
+use crate::scoped_path::scoped_join;
 use crate::util::create_graph;
 use crate::{
     plan::{execute_plan, Plan},
@@ -158,11 +160,50 @@ pub async fn verify_installation(package: &Package, plan: &Plan) -> Result<bool>
     Ok(installed.satisfies(package))
 }
 
+async fn exec_install_script(root: &Dependency, stack: &[CompactString]) -> Result<()> {
+    let path = stack.join("/node_modules/");
+
+    let dir = scoped_join("node_modules", path)?;
+
+    for script_name in ["preinstall", "install", "postinstall"] {
+        if let Some(script) = root.scripts.get(script_name) {
+            PROGRESS_BAR.suspend(|| {
+                println!("Executing {script_name} script for {}", stack.join(" > "));
+            });
+
+            let mut child = Command::new(shell().await?)
+                .arg("-c")
+                .arg(script)
+                .current_dir(&dir)
+                .spawn()?;
+
+            if !child.wait().await?.success() {
+                return Err(eyre!("Install script unsuccessful"));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[async_recursion]
+async fn exec_install_scripts(tree: &DependencyTree, stack: &mut Vec<CompactString>) -> Result<()> {
+    exec_install_script(&tree.root, stack).await?;
+
+    stack.push(tree.root.name.clone());
+    for tree in tree.children.values() {
+        exec_install_scripts(tree, stack).await?;
+    }
+    stack.pop().unwrap();
+
+    Ok(())
+}
+
 async fn install() -> Result<()> {
     let package = read_package().await?;
 
     init_storage().await?;
-    read_config().await?;
+    let config = read_config().await?;
 
     let start = Instant::now();
 
@@ -182,6 +223,12 @@ async fn install() -> Result<()> {
                 start.elapsed().as_millis().yellow()
             )
         });
+
+        if config.allow_install_scripts {
+            for (name, tree) in plan.trees.iter() {
+                exec_install_scripts(tree, &mut vec![name.clone()]).await?;
+            }
+        }
     }
 
     PROGRESS_BAR.finish_and_clear();
