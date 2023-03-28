@@ -78,7 +78,7 @@ allow_install_scripts = true
 ## Using as part of CI/CD?
 
 In order to use Cotton, you have 2 options:
-- Commit the binary to the repository, working similarly to commiting Yarn 2+ (recommended)
+- Commit the binary to the repository, working similarly to committing Yarn 2+ (recommended)
 - Download Cotton on-demand as part of the build process
 
 If the binary is committed to the repository, use `./cotton` instead of `cotton`.
