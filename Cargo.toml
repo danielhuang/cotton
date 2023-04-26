@@ -19,7 +19,7 @@ futures-lite = "1.13.0"
 indexmap = { version = "1.9.3", features = ["serde"] }
 indicatif = "0.17.3"
 itertools = "0.10.5"
-mimalloc = { version = "0.1.36", default-features = false }
+mimalloc = { version = "0.1.37", default-features = false }
 nix = "0.26.2"
 multimap = "0.9.0"
 node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "bf4b103dc88b310c9dc049433aff1a14716e1e68" }
