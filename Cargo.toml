@@ -17,7 +17,7 @@ flume = "0.10.14"
 futures = "0.3.28"
 futures-lite = "1.13.0"
 indexmap = { version = "1.9.3", features = ["serde"] }
-indicatif = "0.17.4"
+indicatif = "0.17.5"
 itertools = "0.10.5"
 mimalloc = { version = "0.1.37", default-features = false }
 nix = "0.26.2"
