@@ -11,7 +11,7 @@ use color_eyre::Report;
 use compact_str::CompactString;
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
-use reqwest::{Client, ClientBuilder};
+use reqwest::{Client, ClientBuilder, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use tokio::fs::{read_to_string, File};
@@ -45,6 +45,7 @@ pub fn decode_json<T: DeserializeOwned>(
 #[serde(untagged)]
 pub enum VersionReq {
     Range(Range),
+    DirectUrl(Url),
     Other(CompactString),
 }
 
@@ -52,6 +53,7 @@ impl VersionReq {
     pub fn satisfies(&self, v: &Version) -> bool {
         match self {
             VersionReq::Range(r) => r.satisfies(v),
+            VersionReq::DirectUrl(_) => true,
             VersionReq::Other(_) => false,
         }
     }
@@ -61,6 +63,7 @@ impl Display for VersionReq {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             VersionReq::Range(a) => a.fmt(f),
+            VersionReq::DirectUrl(a) => a.fmt(f),
             VersionReq::Other(a) => a.fmt(f),
         }
     }

@@ -393,6 +393,7 @@ dependencies = [
  "tracing",
  "tracing-error",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -2143,6 +2144,7 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

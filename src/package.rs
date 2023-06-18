@@ -23,6 +23,7 @@ use serde_json::Value;
 #[serde(default)]
 pub struct Package {
     pub name: CompactString,
+    pub version: Option<Version>,
     pub bin: Option<Bin>,
     pub dist: Dist,
     pub dependencies: BTreeMap<CompactString, VersionReq>,

@@ -1,9 +1,11 @@
+use async_compression::tokio::bufread::GzipDecoder;
 use cached::proc_macro::cached;
 use color_eyre::{
     eyre::{eyre, ContextCompat, Result},
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
+use futures::TryStreamExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use node_semver::Version;
@@ -11,21 +13,23 @@ use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::MAIN_SEPARATOR,
     sync::Arc,
 };
+use std::{fmt::Debug, io};
 use tap::Pipe;
-use tokio::sync::Semaphore;
+use tokio::{fs::read_to_string, io::AsyncReadExt, sync::Semaphore};
+use tokio_tar::Archive;
+use tokio_util::io::StreamReader;
 
 use crate::{
     cache::Cache,
     config::{client_auth, read_config, Registry},
     package::{DepReq, Dist, Package, Subpackage},
-    progress::log_progress,
-    util::{decode_json, retry, ArcResult, VersionReq, CLIENT_LIMIT, CLIENT_Z},
+    progress::{log_progress, log_verbose, log_warning},
+    util::{decode_json, retry, ArcResult, VersionReq, CLIENT, CLIENT_LIMIT, CLIENT_Z},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -125,37 +129,78 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
 
     log_progress(&format!("Fetched {}", d.name.bright_blue()));
 
-    if let VersionReq::Other(tag) = &d.version {
-        let tag = res
-            .dist_tags
-            .get(tag)
-            .wrap_err_with(|| eyre!("Version cannot be satisfied: {} {}", d.name, d.version))?;
-        let version = Version::parse(tag)?;
-        let package = res.versions.get(&version).wrap_err_with(|| {
-            eyre!(
-                "Tag refers to a version that does not exist: {} - {} refers to {}",
-                d.name,
-                d.version,
-                version
-            )
-        })?;
-
-        Ok((version, Arc::new(package.clone().sub())))
-    } else {
-        let (version, package) = res
-            .versions
-            .iter()
-            .sorted_by_key(|(v, _)| !v.is_prerelease())
-            .rfind(|(v, _)| d.version.satisfies(v))
-            .wrap_err_with(|| {
+    match &d.version {
+        VersionReq::Other(tag) => {
+            let tag = res
+                .dist_tags
+                .get(tag)
+                .wrap_err_with(|| eyre!("Version cannot be satisfied: {} {}", d.name, d.version))?;
+            let version = Version::parse(tag)?;
+            let package = res.versions.get(&version).wrap_err_with(|| {
                 eyre!(
-                    "Version cannot be satisfied: expected {} {}",
+                    "Tag refers to a version that does not exist: {} - {} refers to {}",
                     d.name,
-                    d.version
+                    d.version,
+                    version
                 )
             })?;
 
-        Ok((version.clone(), Arc::new(package.clone().sub())))
+            Ok((version, Arc::new(package.clone().sub())))
+        }
+        VersionReq::Range(_) => {
+            let (version, package) = res
+                .versions
+                .iter()
+                .sorted_by_key(|(v, _)| !v.is_prerelease())
+                .rfind(|(v, _)| d.version.satisfies(v))
+                .wrap_err_with(|| {
+                    eyre!(
+                        "Version cannot be satisfied: expected {} {}",
+                        d.name,
+                        d.version
+                    )
+                })?;
+
+            Ok((version.clone(), Arc::new(package.clone().sub())))
+        }
+        VersionReq::DirectUrl(url) => {
+            log_verbose(&format!(
+                "Downloading metadata for {}@{}",
+                d.name, d.version
+            ));
+
+            let res = CLIENT
+                .get(url.clone())
+                .send()
+                .await?
+                .error_for_status()?
+                .bytes_stream()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
+
+            let reader = StreamReader::new(res);
+            let reader = GzipDecoder::new(reader);
+
+            let mut archive = Archive::new(reader);
+            let mut entries = archive.entries()?;
+
+            while let Some(mut entry) = entries.try_next().await? {
+                if entry.path()?.to_str() == Some("package/package.json") {
+                    let mut buf = String::new();
+                    entry.read_to_string(&mut buf).await?;
+
+                    let mut package: Package = serde_json::from_str(&buf)?;
+                    let version = package.version.clone().wrap_err_with(|| {
+                        format!("Package from {url} does not specify a version")
+                    })?;
+
+                    package.dist.tarball = url.to_compact_string();
+
+                    return Ok((version, Arc::new(package.sub())));
+                }
+            }
+
+            Err(eyre!("Package from {url} does not contain package.json"))
+        }
     }
 }
 

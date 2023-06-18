@@ -130,4 +130,4 @@ See [benchmark](benchmark.md) for more information.
 
 ## Limitations
 
-* Cotton does not currently support Git repositories, direct urls, or local paths as dependencies; only registries are supported.
+* Cotton does not currently support Git repositories or local paths as dependencies; only registries and direct urls are supported.
