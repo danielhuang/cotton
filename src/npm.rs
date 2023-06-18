@@ -20,7 +20,7 @@ use std::{
 };
 use std::{fmt::Debug, io};
 use tap::Pipe;
-use tokio::{fs::read_to_string, io::AsyncReadExt, sync::Semaphore};
+use tokio::{io::AsyncReadExt, sync::Semaphore};
 use tokio_tar::Archive;
 use tokio_util::io::StreamReader;
 
@@ -28,7 +28,7 @@ use crate::{
     cache::Cache,
     config::{client_auth, read_config, Registry},
     package::{DepReq, Dist, Package, Subpackage},
-    progress::{log_progress, log_verbose, log_warning},
+    progress::{log_progress, log_verbose},
     util::{decode_json, retry, ArcResult, VersionReq, CLIENT, CLIENT_LIMIT, CLIENT_Z},
 };
 
