@@ -30,14 +30,18 @@ use once_cell::sync::Lazy;
 use package::Package;
 use plan::tree_size;
 use progress::{log_progress, log_verbose};
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use resolve::{Graph, Lockfile};
 use rustc_hash::FxHashSet;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::VecDeque;
+use std::env::{current_dir, current_exe, set_current_dir, set_var, temp_dir};
 use std::ffi::{CString, OsString};
 use std::fs::remove_dir_all;
+use std::os::unix::fs::symlink;
 use std::{env, path::PathBuf, process::exit, time::Instant};
-use tokio::fs::{create_dir_all, metadata};
+use tokio::fs::{create_dir, create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -65,6 +69,9 @@ pub struct Args {
     /// Prevent any modifications to the lockfile
     #[clap(long, global = true)]
     immutable: bool,
+    /// Run in a custom working directory
+    #[clap(long, global = true, alias = "cwd")]
+    working_dir: Option<PathBuf>,
     #[clap(subcommand)]
     cmd: Subcommand,
 }
@@ -82,7 +89,7 @@ pub enum Subcommand {
         #[clap(short = 'D', long)]
         dev: bool,
         /// Pin dependencies to a specific version
-        #[clap(long)]
+        #[clap(long, alias = "exact")]
         pin: bool,
     },
     /// Run a script defined in package.json
@@ -113,6 +120,8 @@ pub enum Subcommand {
         name: CompactString,
         version: Option<Version>,
     },
+    /// Create new projects from a `create-` starter kit
+    Create { name: CompactString },
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -248,7 +257,9 @@ fn new_path() -> Result<OsString> {
 }
 
 fn join_paths() -> Result<()> {
-    env::set_var("PATH", new_path()?);
+    let path = new_path()?;
+    log_verbose(&format!("Setting PATH to {path:?}"));
+    env::set_var("PATH", path);
 
     Ok(())
 }
@@ -275,11 +286,15 @@ async fn add_packages(names: &[CompactString], dev: bool, pin: bool) -> Result<(
         .as_object_mut()
         .wrap_err("`package.json` contains non-object dependencies field")?;
 
-    for (name, res) in try_join_all(
-        names
-            .iter()
-            .map(|name| async move { fetch_package(name).await.map(|res| (name, res)) }),
-    )
+    log_progress("Resolving packages");
+
+    for (name, res) in try_join_all(names.iter().map(|name| async move {
+        PROGRESS_BAR.inc_length(1);
+        let x = fetch_package(name).await.map(|res| (name, res));
+        PROGRESS_BAR.inc(1);
+        log_progress(&format!("Resolved {name}"));
+        x
+    }))
     .await?
     {
         let latest = res
@@ -351,6 +366,10 @@ async fn main() -> Result<()> {
         .init();
 
     color_eyre::install()?;
+
+    if let Some(cwd) = &ARGS.working_dir {
+        set_current_dir(cwd)?;
+    }
 
     match &ARGS.cmd {
         Subcommand::Install => {
@@ -576,6 +595,38 @@ async fn main() -> Result<()> {
             }
 
             println!("Analyzed {} packages", seen.len().yellow());
+        }
+        Subcommand::Create { name } => {
+            let orig_dir = current_dir()?;
+
+            let dir_name: String = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(10)
+                .map(char::from)
+                .collect();
+            let mut temp_dir = temp_dir();
+            temp_dir.push(dir_name);
+            create_dir(&temp_dir).await?;
+            set_current_dir(&temp_dir)?;
+            log_verbose(&format!("Now in {temp_dir:?}"));
+
+            let package_name = format!("create-{name}");
+            save_package(&Value::Object(Map::new())).await?;
+            add_packages(&[package_name.to_compact_string()], false, false).await?;
+            install().await?;
+            symlink(current_exe()?, "node_modules/.bin/yarn")?;
+            join_paths()?;
+
+            set_current_dir(&orig_dir)?;
+            log_verbose(&format!("Now in {orig_dir:?}"));
+            let exe = CString::new(package_name.as_str().as_bytes())
+                .map_err(|_| eyre!("supplied path does not satisfy C-string requirements"))?;
+            set_var(
+                "npm_config_user_agent",
+                "yarn/1.22.19 npm/none cotton/0.0.0",
+            );
+            log_verbose(&format!("Executing {exe:?}"));
+            execvp::<CString>(&exe, &[])?;
         }
     }
 

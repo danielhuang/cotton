@@ -1,11 +1,3 @@
-use std::future::Future;
-use std::path::Path;
-use std::sync::Arc;
-use std::{
-    env::consts::{ARCH, OS},
-    fmt::Display,
-};
-
 use color_eyre::eyre::Result;
 use color_eyre::Report;
 use compact_str::CompactString;
@@ -14,8 +6,16 @@ use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
+use std::future::Future;
+use std::path::Path;
+use std::sync::Arc;
+use std::{
+    env::consts::{ARCH, OS},
+    fmt::Display,
+};
 use tokio::fs::{read_to_string, File};
 use tokio::io::AsyncWriteExt;
+use tracing::instrument;
 
 use crate::package::Package;
 use crate::progress::log_warning;
@@ -115,7 +115,8 @@ pub async fn save_package(package: &Value) -> Result<()> {
     write_json("package.json", package).await
 }
 
-pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> Result<T> {
+#[instrument]
+pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<Path> + std::fmt::Debug) -> Result<T> {
     Ok(serde_json::from_str(&read_to_string(path).await?)?)
 }
 

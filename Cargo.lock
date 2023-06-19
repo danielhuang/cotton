@@ -380,6 +380,7 @@ dependencies = [
  "notify",
  "once_cell",
  "owo-colors",
+ "rand",
  "reqwest",
  "rustc-hash",
  "serde",
