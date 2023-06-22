@@ -11,7 +11,7 @@ async-recursion = "1.0.4"
 cached = "0.44.0"
 clap = { version = "4.3.5", features = ["derive"] }
 color-eyre = "0.6.2"
-compact_str = { version = "0.7.0", features = ["serde"] }
+compact_str = { version = "0.7.1", features = ["serde"] }
 dashmap = { version = "5.4.0", features = ["serde"] }
 flume = "0.10.14"
 futures = "0.3.28"
