@@ -21,7 +21,7 @@
 ### Install from source
 
 ```
-cargo install --git https://github.com/danielhuang/cotton
+cargo install --locked --git https://github.com/danielhuang/cotton
 ```
 
 ### Install compiled artifact (Linux-only)
