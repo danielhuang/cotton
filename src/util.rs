@@ -1,10 +1,11 @@
 use color_eyre::eyre::Result;
 use color_eyre::Report;
-use compact_str::CompactString;
+use compact_str::{CompactString, ToCompactString};
 use node_semver::{Range, Version};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder, Url};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::{de::Error, Deserialize, Serialize};
 use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
@@ -41,10 +42,51 @@ pub fn decode_json<T: DeserializeOwned>(
     serde_path_to_error::deserialize(jd)
 }
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
+pub struct PrefixedVersionReq {
+    pub prefix: CompactString,
+    pub rest: CompactString,
+}
+
+impl Display for PrefixedVersionReq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.prefix, self.rest)
+    }
+}
+
+impl Serialize for PrefixedVersionReq {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PrefixedVersionReq {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let (prefix, rest) = s
+            .split_once(':')
+            .ok_or_else(|| D::Error::custom("missing :"))?;
+        if prefix.starts_with("http") {
+            return Err(D::Error::custom("http not allowed"));
+        }
+        Ok(Self {
+            prefix: prefix.to_compact_string(),
+            rest: rest.to_compact_string(),
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum VersionReq {
     Range(Range),
+    Prefixed(PrefixedVersionReq),
     DirectUrl(Url),
     Other(CompactString),
 }
@@ -53,6 +95,7 @@ impl VersionReq {
     pub fn satisfies(&self, v: &Version) -> bool {
         match self {
             VersionReq::Range(r) => r.satisfies(v),
+            VersionReq::Prefixed(_) => true,
             VersionReq::DirectUrl(_) => true,
             VersionReq::Other(_) => false,
         }
@@ -63,6 +106,7 @@ impl Display for VersionReq {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             VersionReq::Range(a) => a.fmt(f),
+            VersionReq::Prefixed(a) => a.fmt(f),
             VersionReq::DirectUrl(a) => a.fmt(f),
             VersionReq::Other(a) => a.fmt(f),
         }

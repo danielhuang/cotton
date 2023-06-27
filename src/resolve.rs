@@ -55,7 +55,7 @@ impl Graph {
                 }
 
                 relations.insert(
-                    req,
+                    req.clone(),
                     Some(VersionedSubpackage {
                         package: subpackage.clone(),
                         version,

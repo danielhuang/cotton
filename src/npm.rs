@@ -1,4 +1,5 @@
 use async_compression::tokio::bufread::GzipDecoder;
+use async_recursion::async_recursion;
 use cached::proc_macro::cached;
 use color_eyre::{
     eyre::{eyre, ContextCompat, Result},
@@ -124,6 +125,7 @@ pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
 
 #[tracing::instrument]
 #[cached(result)]
+#[async_recursion]
 pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
     let res = fetch_package_cached(&d.name).await?;
 
@@ -201,6 +203,28 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
 
             Err(eyre!("Package from {url} does not contain package.json"))
         }
+        VersionReq::Prefixed(prefixed) => match prefixed.prefix.as_str() {
+            "npm" => {
+                let (actual_name, actual_req) = prefixed
+                    .rest
+                    .split_once('@')
+                    .ok_or_else(|| eyre!("Invalid prefixed version: {prefixed}"))?;
+
+                let actual_req = VersionReq::Range(actual_req.parse()?);
+
+                let inner_req = DepReq {
+                    name: actual_name.to_compact_string(),
+                    version: actual_req,
+                    optional: d.optional,
+                };
+
+                let (inner_version, mut inner_pkg) = fetch_dep_single(inner_req).await?;
+                Arc::make_mut(&mut inner_pkg).name = d.name;
+
+                Ok((inner_version, inner_pkg))
+            }
+            _ => Err(eyre!("Unsupported version prefix")),
+        },
     }
 }
 
