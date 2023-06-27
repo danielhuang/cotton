@@ -156,6 +156,7 @@ async fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
     Ok(spawn_blocking(move || hardlink_dir_sync(src, dst)).await??)
 }
 
+#[tracing::instrument]
 async fn get_package_src(src: &Path) -> Result<PathBuf> {
     let mut dir = read_dir(src).await?;
     while let Some(entry) = dir.next_entry().await? {

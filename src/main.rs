@@ -48,6 +48,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use util::{read_package, read_package_as_value, save_package, write_json};
 use watch::async_watch;
+use which::which;
 
 use crate::npm::DependencyTree;
 use crate::scoped_path::scoped_join;
@@ -122,6 +123,9 @@ pub enum Subcommand {
     },
     /// Create new projects from a `create-` starter kit
     Create { name: CompactString },
+    /// Download (if needed) and execute a command
+    #[clap(name = "x")]
+    DownloadAndExec { name: String, args: Vec<String> },
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -226,11 +230,13 @@ async fn install() -> Result<()> {
         execute_plan(plan.clone()).await?;
 
         PROGRESS_BAR.suspend(|| {
-            println!(
-                "Installed {} packages in {}ms",
-                size.yellow(),
-                start.elapsed().as_millis().yellow()
-            )
+            if size > 0 {
+                println!(
+                    "Installed {} packages in {}ms",
+                    size.yellow(),
+                    start.elapsed().as_millis().yellow()
+                )
+            }
         });
 
         if config.allow_install_scripts {
@@ -355,6 +361,52 @@ fn build_map(
         map.insert((tree.root.name.clone(), tree.root.version.clone()), None);
         build_map(tree, map);
     }
+}
+
+#[tracing::instrument]
+fn exec_with_args(exe: &str, args: &[String]) -> Result<()> {
+    let exe = CString::new(exe.as_bytes().to_vec()).map_err(|_| eyre!("invalid path"))?;
+
+    let mut args = args
+        .iter()
+        .map(|x| CString::new(x.as_bytes().to_vec()).map_err(|_| eyre!("invalid arguments")))
+        .collect::<Result<Vec<_>>>()?;
+
+    args.insert(0, exe.clone());
+    execvp(&exe, &args)?;
+
+    Ok(())
+}
+
+async fn install_bin_temp(package_name: &str) -> Result<()> {
+    let orig_dir = current_dir()?;
+
+    let dir_name: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(10)
+        .map(char::from)
+        .collect();
+
+    let mut temp_dir = temp_dir();
+    temp_dir.push(dir_name);
+    create_dir(&temp_dir).await?;
+    set_current_dir(&temp_dir)?;
+    log_verbose(&format!("Now in {temp_dir:?}"));
+
+    save_package(&Value::Object(Map::new())).await?;
+    add_packages(&[package_name.to_compact_string()], false, false).await?;
+    install().await?;
+    set_var(
+        "npm_config_user_agent",
+        "yarn/1.22.19 npm/none cotton/0.0.0",
+    );
+    symlink(current_exe()?, "node_modules/.bin/yarn")?;
+    join_paths()?;
+
+    set_current_dir(&orig_dir)?;
+    log_verbose(&format!("Now in {orig_dir:?}"));
+
+    Ok(())
 }
 
 pub static ARGS: Lazy<Args> = Lazy::new(Args::parse);
@@ -484,23 +536,10 @@ async fn main() -> Result<()> {
             .await?;
         }
         Subcommand::Exec { exe, args } => {
-            let exe = CString::new(exe.as_bytes().to_vec())
-                .map_err(|_| eyre!("supplied path does not satisfy C-string requirements"))?;
-
-            let mut args = args
-                .iter()
-                .map(|x| {
-                    CString::new(x.as_bytes().to_vec()).map_err(|_| {
-                        eyre!("supplied argument does not satisfy C-string requirements")
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            args.insert(0, exe.clone());
-
             install().await?;
             join_paths()?;
 
-            execvp(&exe, &args)?;
+            exec_with_args(exe, args)?;
         }
         Subcommand::Remove { names, dev } => {
             if names.is_empty() {
@@ -597,36 +636,16 @@ async fn main() -> Result<()> {
             println!("Analyzed {} packages", seen.len().yellow());
         }
         Subcommand::Create { name } => {
-            let orig_dir = current_dir()?;
-
-            let dir_name: String = rand::thread_rng()
-                .sample_iter(&Alphanumeric)
-                .take(10)
-                .map(char::from)
-                .collect();
-            let mut temp_dir = temp_dir();
-            temp_dir.push(dir_name);
-            create_dir(&temp_dir).await?;
-            set_current_dir(&temp_dir)?;
-            log_verbose(&format!("Now in {temp_dir:?}"));
-
-            let package_name = format!("create-{name}");
-            save_package(&Value::Object(Map::new())).await?;
-            add_packages(&[package_name.to_compact_string()], false, false).await?;
-            install().await?;
-            symlink(current_exe()?, "node_modules/.bin/yarn")?;
-            join_paths()?;
-
-            set_current_dir(&orig_dir)?;
-            log_verbose(&format!("Now in {orig_dir:?}"));
-            let exe = CString::new(package_name.as_str().as_bytes())
-                .map_err(|_| eyre!("supplied path does not satisfy C-string requirements"))?;
-            set_var(
-                "npm_config_user_agent",
-                "yarn/1.22.19 npm/none cotton/0.0.0",
-            );
-            log_verbose(&format!("Executing {exe:?}"));
-            execvp::<CString>(&exe, &[])?;
+            let name = format!("create-{name}");
+            install_bin_temp(&name).await?;
+            exec_with_args(&name, &[])?;
+        }
+        Subcommand::DownloadAndExec { name, args } => {
+            if let Err(e) = which(name) {
+                log_verbose(&e.to_string());
+                install_bin_temp(name).await?;
+            }
+            exec_with_args(name, args)?;
         }
     }
 

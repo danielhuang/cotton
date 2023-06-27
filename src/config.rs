@@ -1,4 +1,3 @@
-use cached::proc_macro::cached;
 use color_eyre::eyre::Result;
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
@@ -71,7 +70,6 @@ impl AuthSource {
     }
 }
 
-#[cached(result)]
 pub async fn read_config() -> Result<Config> {
     let config = read_to_string("cotton.toml").await;
     if let Ok(config) = config {
