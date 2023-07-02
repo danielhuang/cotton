@@ -340,10 +340,12 @@ pub async fn shell() -> Result<String> {
     Err(eyre!("No shell found"))
 }
 
-fn build_map(trees: &Graph, map: &mut MultiMap<(CompactString, Version), DepReq>) -> Result<()> {
-    for (from, to) in trees.relations.iter() {
+fn build_map(graph: &Graph) -> Result<MultiMap<(CompactString, Version), DepReq>> {
+    let mut map = MultiMap::new();
+
+    for (from, to) in graph.relations.iter() {
         for child_req in to.package.iter() {
-            let child_dep = trees.resolve_req(&child_req)?;
+            let child_dep = graph.resolve_req(&child_req)?;
             map.insert(
                 (child_dep.package.name.clone(), child_dep.version),
                 from.clone(),
@@ -351,7 +353,7 @@ fn build_map(trees: &Graph, map: &mut MultiMap<(CompactString, Version), DepReq>
         }
     }
 
-    Ok(())
+    Ok(map)
 }
 
 #[tracing::instrument]
@@ -565,8 +567,7 @@ async fn main() -> Result<()> {
 
             let graph = create_graph().await;
 
-            let mut map = MultiMap::new();
-            build_map(&graph, &mut map)?;
+            let map = build_map(&graph)?;
 
             let mut seen = FxHashSet::default();
             let mut queue = VecDeque::new();
@@ -599,16 +600,18 @@ async fn main() -> Result<()> {
                         println!();
                     } else if let Some(required_by) = map.get_vec(&(name.clone(), version.clone()))
                     {
-                        let required_by = required_by.iter().unique().collect_vec();
+                        let required_by: FxHashSet<_> = required_by
+                            .iter()
+                            .map(|x| graph.resolve_req(x))
+                            .try_collect()?;
                         if !required_by.is_empty() {
                             println!(
                                 "{}",
                                 format!("{}@{} is used by:", name.yellow(), version).bold()
                             );
-                            for req in required_by {
-                                queue
-                                    .push_back((req.name.clone(), graph.resolve_req(req)?.version));
-                                println!(" - {}@{}", req.name, req.version);
+                            for dep in required_by {
+                                queue.push_back((dep.package.name.clone(), dep.version.clone()));
+                                println!(" - {}@{}", dep.package.name, dep.version);
                             }
                             println!();
                         }
