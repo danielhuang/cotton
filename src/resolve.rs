@@ -6,7 +6,7 @@ use crate::{npm, ARGS};
 use color_eyre::eyre::ContextCompat;
 use color_eyre::{Report, Section};
 use compact_str::{CompactString, ToCompactString};
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use itertools::Itertools;
 use node_semver::Version;
 use owo_colors::OwoColorize;
@@ -33,9 +33,24 @@ impl Graph {
             send: flume::Sender<JoinHandle<color_eyre::Result<()>>>,
             req: DepReq,
             relations: Arc<DashMap<DepReq, Option<VersionedSubpackage>>>,
+            seen: Arc<DashSet<DepReq>>,
             download: bool,
         ) -> color_eyre::Result<()> {
-            if relations.contains_key(&req) {
+            seen.insert(req.clone());
+
+            if let Some(subpackage) = relations.get(&req) {
+                if let Some(subpackage) = subpackage.value() {
+                    for child_req in subpackage.package.iter() {
+                        queue_resolve(
+                            send.clone(),
+                            child_req,
+                            relations.clone(),
+                            seen.clone(),
+                            download,
+                        )?;
+                    }
+                }
+
                 return Ok(());
             }
 
@@ -63,7 +78,13 @@ impl Graph {
                 );
 
                 for child_req in subpackage.iter() {
-                    queue_resolve(send.clone(), child_req, relations.clone(), download)?;
+                    queue_resolve(
+                        send.clone(),
+                        child_req,
+                        relations.clone(),
+                        seen.clone(),
+                        download,
+                    )?;
                 }
 
                 Ok(()) as color_eyre::Result<_>
@@ -81,8 +102,10 @@ impl Graph {
 
         let (send, recv) = flume::unbounded();
 
+        let seen = Arc::new(DashSet::new());
+
         for req in remaining {
-            queue_resolve(send.clone(), req, relations.clone(), download)?;
+            queue_resolve(send.clone(), req, relations.clone(), seen.clone(), download)?;
         }
 
         drop(send);
@@ -93,6 +116,7 @@ impl Graph {
 
         self.relations = relations
             .iter()
+            .filter(|x| seen.contains(x.key()))
             .map(|x| (x.key().clone(), x.value().clone().unwrap()))
             .collect();
 
