@@ -99,7 +99,7 @@ impl Graph {
         Ok(())
     }
 
-    fn resolve_req(&self, req: &DepReq) -> color_eyre::Result<VersionedSubpackage, Report> {
+    pub fn resolve_req(&self, req: &DepReq) -> color_eyre::Result<VersionedSubpackage, Report> {
         Ok(self
             .relations
             .get(req)

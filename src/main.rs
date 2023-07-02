@@ -27,7 +27,7 @@ use nix::unistd::{execvp, Pid};
 use node_semver::Version;
 use npm::{fetch_package, Dependency};
 use once_cell::sync::Lazy;
-use package::Package;
+use package::{DepReq, Package};
 use plan::tree_size;
 use progress::{log_progress, log_verbose};
 use rand::distributions::Alphanumeric;
@@ -340,27 +340,18 @@ pub async fn shell() -> Result<String> {
     Err(eyre!("No shell found"))
 }
 
-fn build_map(
-    trees: &[DependencyTree],
-    map: &mut MultiMap<(CompactString, Version), Option<(CompactString, Version)>>,
-) {
-    fn build_map(
-        tree: &DependencyTree,
-        map: &mut MultiMap<(CompactString, Version), Option<(CompactString, Version)>>,
-    ) {
-        for (_, child) in tree.children.iter() {
+fn build_map(trees: &Graph, map: &mut MultiMap<(CompactString, Version), DepReq>) -> Result<()> {
+    for (from, to) in trees.relations.iter() {
+        for child_req in to.package.iter() {
+            let child_dep = trees.resolve_req(&child_req)?;
             map.insert(
-                (child.root.name.clone(), child.root.version.clone()),
-                Some((tree.root.name.clone(), tree.root.version.clone())),
+                (child_dep.package.name.clone(), child_dep.version),
+                from.clone(),
             );
-            build_map(child, map);
         }
     }
 
-    for tree in trees {
-        map.insert((tree.root.name.clone(), tree.root.version.clone()), None);
-        build_map(tree, map);
-    }
+    Ok(())
 }
 
 #[tracing::instrument]
@@ -574,10 +565,8 @@ async fn main() -> Result<()> {
 
             let graph = create_graph().await;
 
-            let trees = graph.build_trees(&package.iter_with_dev().collect_vec())?;
-
             let mut map = MultiMap::new();
-            build_map(&trees, &mut map);
+            build_map(&graph, &mut map)?;
 
             let mut seen = FxHashSet::default();
             let mut queue = VecDeque::new();
@@ -598,32 +587,28 @@ async fn main() -> Result<()> {
 
             while let Some((name, version)) = queue.pop_front() {
                 if seen.insert((name.clone(), version.clone())) {
-                    if let Some(v) = map.get_vec(&(name.clone(), version.clone())) {
-                        if package
-                            .iter_with_dev()
-                            .any(|x| x.name == name && x.version.satisfies(&version))
-                        {
-                            println!(
-                                "{}",
-                                format!(
-                                    "{}@{} is required by package.json",
-                                    name.yellow(),
-                                    version
-                                )
+                    if package
+                        .iter_with_dev()
+                        .any(|x| x.name == name && x.version.satisfies(&version))
+                    {
+                        println!(
+                            "{}",
+                            format!("{}@{} is required by package.json", name.yellow(), version)
                                 .bold()
-                            );
-                            println!();
-                        }
-
-                        let v = v.iter().unique().flatten().collect_vec();
-                        if !v.is_empty() {
+                        );
+                        println!();
+                    } else if let Some(required_by) = map.get_vec(&(name.clone(), version.clone()))
+                    {
+                        let required_by = required_by.iter().unique().collect_vec();
+                        if !required_by.is_empty() {
                             println!(
                                 "{}",
                                 format!("{}@{} is used by:", name.yellow(), version).bold()
                             );
-                            for (name, version) in v {
-                                queue.push_back((name.clone(), version.clone()));
-                                println!(" - {name}@{version}");
+                            for req in required_by {
+                                queue
+                                    .push_back((req.name.clone(), graph.resolve_req(req)?.version));
+                                println!(" - {}@{}", req.name, req.version);
                             }
                             println!();
                         }
