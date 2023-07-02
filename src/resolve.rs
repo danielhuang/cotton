@@ -32,7 +32,7 @@ impl Graph {
         fn queue_resolve(
             send: flume::Sender<JoinHandle<color_eyre::Result<()>>>,
             req: DepReq,
-            relations: Arc<DashMap<DepReq, Option<VersionedSubpackage>>>,
+            relations: Arc<DashMap<DepReq, VersionedSubpackage>>,
             seen: Arc<DashSet<DepReq>>,
             download: bool,
         ) -> color_eyre::Result<()> {
@@ -41,22 +41,18 @@ impl Graph {
             }
 
             if let Some(subpackage) = relations.get(&req) {
-                if let Some(subpackage) = subpackage.value() {
-                    for child_req in subpackage.package.iter() {
-                        queue_resolve(
-                            send.clone(),
-                            child_req,
-                            relations.clone(),
-                            seen.clone(),
-                            download,
-                        )?;
-                    }
+                for child_req in subpackage.package.iter() {
+                    queue_resolve(
+                        send.clone(),
+                        child_req,
+                        relations.clone(),
+                        seen.clone(),
+                        download,
+                    )?;
                 }
 
                 return Ok(());
             }
-
-            relations.insert(req.clone(), None);
 
             send.clone().send(tokio::spawn(async move {
                 let (version, subpackage) = npm::fetch_dep_single(req.clone()).await?;
@@ -73,10 +69,10 @@ impl Graph {
 
                 relations.insert(
                     req.clone(),
-                    Some(VersionedSubpackage {
+                    VersionedSubpackage {
                         package: subpackage.clone(),
                         version,
-                    }),
+                    },
                 );
 
                 for child_req in subpackage.iter() {
@@ -95,12 +91,8 @@ impl Graph {
             Ok(())
         }
 
-        let relations: Arc<DashMap<_, _>> = Arc::new(
-            take(&mut self.relations)
-                .into_iter()
-                .map(|x| (x.0, Some(x.1)))
-                .collect(),
-        );
+        let relations: Arc<DashMap<_, _>> =
+            Arc::new(take(&mut self.relations).into_iter().collect());
 
         let (send, recv) = flume::unbounded();
 
@@ -119,7 +111,7 @@ impl Graph {
         self.relations = relations
             .iter()
             .filter(|x| seen.contains(x.key()))
-            .map(|x| (x.key().clone(), x.value().clone().unwrap()))
+            .map(|x| (x.key().clone(), x.value().clone()))
             .collect();
 
         Ok(())
