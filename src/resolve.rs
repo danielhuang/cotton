@@ -36,7 +36,9 @@ impl Graph {
             seen: Arc<DashSet<DepReq>>,
             download: bool,
         ) -> color_eyre::Result<()> {
-            seen.insert(req.clone());
+            if !seen.insert(req.clone()) {
+                return Ok(());
+            }
 
             if let Some(subpackage) = relations.get(&req) {
                 if let Some(subpackage) = subpackage.value() {
