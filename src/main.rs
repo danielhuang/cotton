@@ -588,18 +588,7 @@ async fn main() -> Result<()> {
 
             while let Some((name, version)) = queue.pop_front() {
                 if seen.insert((name.clone(), version.clone())) {
-                    if package
-                        .iter_with_dev()
-                        .any(|x| x.name == name && x.version.satisfies(&version))
-                    {
-                        println!(
-                            "{}",
-                            format!("{}@{} is required by package.json", name.yellow(), version)
-                                .bold()
-                        );
-                        println!();
-                    } else if let Some(required_by) = map.get_vec(&(name.clone(), version.clone()))
-                    {
+                    if let Some(required_by) = map.get_vec(&(name.clone(), version.clone())) {
                         let required_by: FxHashSet<_> = required_by
                             .iter()
                             .map(|x| graph.resolve_req(x))
@@ -615,6 +604,15 @@ async fn main() -> Result<()> {
                             }
                             println!();
                         }
+                    } else if package
+                        .iter_with_dev()
+                        .any(|x| x.name == name && x.version.satisfies(&version))
+                    {
+                        println!(
+                            "{}",
+                            format!("{}@{} is used by package.json", name.yellow(), version).bold()
+                        );
+                        println!();
                     } else {
                         return Err(eyre!("Package {}@{} is not used", name, version));
                     }
