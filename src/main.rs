@@ -575,9 +575,9 @@ async fn main() -> Result<()> {
             if let Some(version) = version {
                 queue.push_back((name.clone(), version.clone()));
             } else {
-                for (map_name, version) in map.keys() {
-                    if name == map_name {
-                        queue.push_back((name.clone(), version.clone()));
+                for (req, resolved) in graph.relations.iter() {
+                    if name == &req.name {
+                        queue.push_back((name.clone(), resolved.version.clone()));
                     }
                 }
             }
