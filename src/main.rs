@@ -52,7 +52,7 @@ use which::which;
 
 use crate::npm::DependencyTree;
 use crate::scoped_path::scoped_join;
-use crate::util::create_graph;
+use crate::util::load_graph_from_lockfile;
 use crate::{
     plan::{execute_plan, Plan},
     progress::PROGRESS_BAR,
@@ -131,7 +131,7 @@ pub enum Subcommand {
 async fn prepare_plan(package: &Package) -> Result<Plan> {
     log_progress("Preparing");
 
-    let mut graph = create_graph().await;
+    let mut graph = load_graph_from_lockfile().await;
 
     if !ARGS.immutable {
         graph.append(package.iter_with_dev(), true).await?;
@@ -565,7 +565,7 @@ async fn main() -> Result<()> {
         Subcommand::Why { name, version } => {
             let package = read_package().await?;
 
-            let graph = create_graph().await;
+            let graph = load_graph_from_lockfile().await;
 
             let map = build_map(&graph)?;
 

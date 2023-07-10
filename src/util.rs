@@ -175,7 +175,7 @@ pub async fn write_json<T: Serialize>(path: impl AsRef<Path>, data: T) -> Result
     Ok(())
 }
 
-pub async fn create_graph() -> Graph {
+pub async fn load_graph_from_lockfile() -> Graph {
     let lockfile: Lockfile = read_json("cotton.lock").await.unwrap_or_default();
     lockfile.into_graph()
 }
