@@ -9,7 +9,7 @@ edition = "2021"
 async-compression = { version = "0.4.1", features = ["tokio", "gzip"] }
 async-recursion = "1.0.4"
 cached = "0.44.0"
-clap = { version = "4.3.21", features = ["derive"] }
+clap = { version = "4.3.22", features = ["derive"] }
 color-eyre = "0.6.2"
 compact_str = { version = "0.7.1", features = ["serde"] }
 dashmap = { version = "5.5.0", features = ["serde"] }
