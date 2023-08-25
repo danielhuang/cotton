@@ -36,7 +36,7 @@ reqwest = { version = "0.11.20", features = [
   "deflate",
 ], default-features = false }
 rustc-hash = "1.1.0"
-serde = { version = "1.0.186", features = ["derive", "rc"] }
+serde = { version = "1.0.187", features = ["derive", "rc"] }
 serde_json = { version = "1.0.105", features = ["preserve_order"] }
 serde_path_to_error = "0.1.14"
 tokio = { version = "1.32.0", features = ["full"] }
