@@ -47,7 +47,7 @@ tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 toml = "0.7.6"
 tap = "1.0.1"
-url = { version = "2.4.0", features = ["serde"] }
+url = { version = "2.4.1", features = ["serde"] }
 rand = "0.8.5"
 which = "4.4.0"
 
