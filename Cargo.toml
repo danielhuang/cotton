@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 async-compression = { version = "0.4.2", features = ["tokio", "gzip"] }
-async-recursion = "1.0.4"
+async-recursion = "1.0.5"
 cached = "0.44.0"
 clap = { version = "4.4.2", features = ["derive"] }
 color-eyre = "0.6.2"
