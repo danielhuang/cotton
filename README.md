@@ -115,7 +115,17 @@ Set the environment variable `NPM_FLAGS` to `--version`. Make sure that there is
 
 ## Comparison with other package managers
 
-Installing packages used by [create-react-app](https://create-react-app.dev/):
+### [Bun's benchmark](https://github.com/oven-sh/bun/tree/main/bench/install)
+
+| Tool | With lockfile and cache |
+| --- | --- |
+| Cotton | **0.272s** |
+| Bun | 0.356s |
+| pnpm | 2.332s |
+| Yarn | 2.775s |
+| npm | 4.309s |
+
+### Installing packages used by [create-react-app](https://create-react-app.dev/):
 
 ![Hyperfine benchmark image](https://cdn.discordapp.com/attachments/355822466117009420/1080972798270390333/image.png)
 
