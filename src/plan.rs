@@ -128,9 +128,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     static CACHE: Lazy<Cache<Dependency, Result<(), Arc<Report>>>> = Lazy::new(|| {
         Cache::new(|key: Dependency, _| async move {
-            retry(|| async { download_package(&key).await })
-                .await
-                .map_err(Arc::new)
+            retry(|| download_package(&key)).await.map_err(Arc::new)
         })
     });
 
