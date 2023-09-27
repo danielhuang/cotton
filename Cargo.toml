@@ -16,7 +16,7 @@ dashmap = { version = "5.5.3", features = ["serde"] }
 flume = "0.11.0"
 futures = "0.3.28"
 futures-lite = "1.13.0"
-indexmap = { version = "2.0.0", features = ["serde"] }
+indexmap = { version = "2.0.1", features = ["serde"] }
 indicatif = "0.17.7"
 itertools = "0.11.0"
 mimalloc = { version = "0.1.39", default-features = false }
