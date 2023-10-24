@@ -127,12 +127,11 @@ pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
 #[cached(result)]
 #[async_recursion]
 pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
-    let res = fetch_package_cached(&d.name).await?;
-
     log_progress(&format!("Fetched {}", d.name.bright_blue()));
 
     match &d.version {
         VersionReq::Other(tag) => {
+            let res = fetch_package_cached(&d.name).await?;
             let tag = res
                 .dist_tags
                 .get(tag)
@@ -150,6 +149,7 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
             Ok((version, Arc::new(package.clone().sub())))
         }
         VersionReq::Range(_) => {
+            let res = fetch_package_cached(&d.name).await?;
             let (version, package) = res
                 .versions
                 .iter()
@@ -207,7 +207,7 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
             "npm" => {
                 let (actual_name, actual_req) = prefixed
                     .rest
-                    .split_once('@')
+                    .rsplit_once('@')
                     .ok_or_else(|| eyre!("Invalid prefixed version: {prefixed}"))?;
 
                 let actual_req = VersionReq::Range(actual_req.parse()?);
