@@ -174,7 +174,7 @@ impl Debug for DepReq {
 }
 
 impl Package {
-    pub fn iter_with_dev(&self) -> impl Iterator<Item = DepReq> + '_ {
+    pub fn iter_all(&self) -> impl Iterator<Item = DepReq> + '_ {
         self.dependencies
             .iter()
             .map(|(n, v)| DepReq {
@@ -183,6 +183,11 @@ impl Package {
                 optional: self.optional_dependencies.contains_key(n),
             })
             .chain(self.dev_dependencies.iter().map(|(n, v)| DepReq {
+                name: n.to_compact_string(),
+                version: v.to_owned(),
+                optional: self.optional_dependencies.contains_key(n),
+            }))
+            .chain(self.optional_dependencies.iter().map(|(n, v)| DepReq {
                 name: n.to_compact_string(),
                 version: v.to_owned(),
                 optional: self.optional_dependencies.contains_key(n),

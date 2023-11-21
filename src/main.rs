@@ -37,9 +37,10 @@ use rustc_hash::FxHashSet;
 use serde_json::{Map, Value};
 use std::collections::VecDeque;
 use std::env::{current_dir, current_exe, set_current_dir, set_var, temp_dir};
-use std::ffi::{CString, OsString};
+use std::ffi::{CString, OsStr, OsString};
 use std::fs::remove_dir_all;
 use std::os::unix::fs::symlink;
+use std::os::unix::prelude::OsStrExt;
 use std::{env, path::PathBuf, process::exit, time::Instant};
 use tokio::fs::{create_dir, create_dir_all, metadata};
 use tokio::{fs::read_to_string, process::Command};
@@ -108,7 +109,7 @@ pub enum Subcommand {
         pin: bool,
     },
     /// Execute a command that is not specified as a script
-    Exec { exe: String, args: Vec<String> },
+    Exec { exe: OsString, args: Vec<OsString> },
     /// Remove package from package.json
     Remove {
         names: Vec<CompactString>,
@@ -125,7 +126,7 @@ pub enum Subcommand {
     Create { name: CompactString },
     /// Download (if needed) and execute a command
     #[clap(name = "x")]
-    DownloadAndExec { name: String, args: Vec<String> },
+    DownloadAndExec { name: OsString, args: Vec<OsString> },
 }
 
 async fn prepare_plan(package: &Package) -> Result<Plan> {
@@ -134,13 +135,13 @@ async fn prepare_plan(package: &Package) -> Result<Plan> {
     let mut graph = load_graph_from_lockfile().await;
 
     if !ARGS.immutable {
-        graph.append(package.iter_with_dev(), true).await?;
+        graph.append(package.iter_all(), true).await?;
         write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
     }
 
     log_progress("Retrieved dependency graph");
 
-    let trees = graph.build_trees(&package.iter_with_dev().collect_vec())?;
+    let trees = graph.build_trees(&package.iter_all().collect_vec())?;
     log_progress(&format!("Fetched {} root deps", trees.len().yellow()));
 
     let plan = Plan::new(
@@ -357,7 +358,7 @@ fn build_map(graph: &Graph) -> Result<MultiMap<(CompactString, Version), DepReq>
 }
 
 #[tracing::instrument]
-fn exec_with_args(exe: &str, args: &[String]) -> Result<()> {
+fn exec_with_args(exe: &OsStr, args: &[OsString]) -> Result<()> {
     let exe = CString::new(exe.as_bytes().to_vec()).map_err(|_| eyre!("invalid path"))?;
 
     let mut args = args
@@ -434,7 +435,7 @@ async fn main() -> Result<()> {
             let start = Instant::now();
 
             let mut graph = Graph::default();
-            graph.append(package.iter_with_dev(), false).await?;
+            graph.append(package.iter_all(), false).await?;
             write_json("cotton.lock", Lockfile::new(graph.clone())).await?;
 
             PROGRESS_BAR.suspend(|| {
@@ -605,7 +606,7 @@ async fn main() -> Result<()> {
                             println!();
                         }
                     } else if package
-                        .iter_with_dev()
+                        .iter_all()
                         .any(|x| x.name == name && x.version.satisfies(&version))
                     {
                         println!(
@@ -624,12 +625,12 @@ async fn main() -> Result<()> {
         Subcommand::Create { name } => {
             let name = format!("create-{name}");
             install_bin_temp(&name).await?;
-            exec_with_args(&name, &[])?;
+            exec_with_args(OsStr::new(&name), &[])?;
         }
         Subcommand::DownloadAndExec { name, args } => {
             if let Err(e) = which(name) {
                 log_verbose(&e.to_string());
-                install_bin_temp(name).await?;
+                install_bin_temp(name.to_str().wrap_err("package name invalid")?).await?;
             }
             exec_with_args(name, args)?;
         }

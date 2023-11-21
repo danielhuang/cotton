@@ -55,7 +55,7 @@ impl Plan {
             .values()
             .map(|x| (x.root.name.to_compact_string(), x.root.version.clone()))
             .collect();
-        package.iter_with_dev().all(|req| {
+        package.iter_all().all(|req| {
             if let Some(version) = map.get(&req.name) {
                 if let VersionReq::Range(range) = req.version {
                     return range.satisfies(version);
