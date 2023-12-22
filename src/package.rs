@@ -91,11 +91,14 @@ impl Subpackage {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = DepReq> + '_ {
-        self.dependencies.iter().map(|(n, v)| DepReq {
-            name: n.to_compact_string(),
-            version: v.to_owned(),
-            optional: self.optional_dependencies.contains_key(n),
-        })
+        self.dependencies
+            .iter()
+            .chain(self.optional_dependencies.iter())
+            .map(|(n, v)| DepReq {
+                name: n.to_compact_string(),
+                version: v.to_owned(),
+                optional: self.optional_dependencies.contains_key(n),
+            })
     }
 
     pub fn supported(&self) -> bool {
