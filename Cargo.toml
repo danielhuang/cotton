@@ -14,7 +14,7 @@ color-eyre = "0.6.2"
 compact_str = { version = "0.7.1", features = ["serde"] }
 dashmap = { version = "5.5.3", features = ["serde"] }
 flume = "0.11.0"
-futures = "0.3.29"
+futures = "0.3.30"
 futures-lite = "2.1.0"
 indexmap = { version = "2.1.0", features = ["serde"] }
 indicatif = "0.17.7"
