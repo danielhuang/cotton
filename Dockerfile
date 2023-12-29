@@ -1,3 +1,3 @@
-FROM rust@sha256:fd45a543ed41160eae2ce9e749e5b3c972625b0778104e8962e9bfb113535301
+FROM rust@sha256:e17a45360b8569720da89dd7bf3c8628ba801c0758c8b4f12b1b32a9327a43a7
 RUN rustup component add clippy
 RUN rustup component add rustfmt
