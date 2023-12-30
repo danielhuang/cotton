@@ -241,11 +241,10 @@ impl DependencyTree {
             root: self.root.clone(),
             children: self
                 .children
-                .clone()
-                .into_iter()
+                .iter()
                 .filter_map(|(name, tree)| {
                     if !exclude.contains(&tree.root) {
-                        Some((name, tree.filter(exclude)))
+                        Some((name.clone(), tree.filter(exclude)))
                     } else {
                         None
                     }
