@@ -389,7 +389,7 @@ dependencies = [
  "flume",
  "futures",
  "futures-lite",
- "indexmap 2.2.4",
+ "indexmap 2.2.5",
  "indicatif",
  "itertools",
  "mimalloc",
@@ -932,9 +932,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.2.4"
+version = "2.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "967d6dd42f16dbf0eb8040cb9e477933562684d3918f7d253f2ff9087fb3e7a3"
+checksum = "7b0b929d511467233429c45a44ac1dcaa21ba0f5ba11e4879e6ed28ddb4f9df4"
 dependencies = [
  "equivalent",
  "hashbrown 0.14.1",
@@ -1671,7 +1671,7 @@ version = "1.0.114"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5f09b1bd632ef549eaa9f60a1f8de742bdbc698e6cee2095fc84dde5f549ae0"
 dependencies = [
- "indexmap 2.2.4",
+ "indexmap 2.2.5",
  "itoa",
  "ryu",
  "serde",
@@ -2010,7 +2010,7 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8dc77def39ce6079c2d0c866cc20848f591b1898f153c9fe7c4f29e1154510b"
 dependencies = [
- "indexmap 2.2.4",
+ "indexmap 2.2.5",
  "serde",
  "serde_spanned",
  "toml_datetime",
