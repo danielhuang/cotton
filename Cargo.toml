@@ -38,7 +38,7 @@ reqwest = { version = "0.11.25", features = [
 rustc-hash = "1.1.0"
 serde = { version = "1.0.197", features = ["derive", "rc"] }
 serde_json = { version = "1.0.114", features = ["preserve_order"] }
-serde_path_to_error = "0.1.15"
+serde_path_to_error = "0.1.16"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-tar = { git = "https://github.com/danielhuang/tokio-tar", rev = "ac063a10224a9dcb16967e792c3075e0ee8bb1a7" }
 tokio-util = { version = "0.7.10", features = ["compat"] }
