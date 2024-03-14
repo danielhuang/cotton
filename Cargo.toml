@@ -10,7 +10,7 @@ async-compression = { version = "0.4.6", features = ["tokio", "gzip"] }
 async-recursion = "1.0.5"
 cached = "0.44.0"
 clap = { version = "4.5.2", features = ["derive"] }
-color-eyre = "0.6.2"
+color-eyre = "0.6.3"
 compact_str = { version = "0.7.1", features = ["serde"] }
 dashmap = { version = "5.5.3", features = ["serde"] }
 flume = "0.11.0"
