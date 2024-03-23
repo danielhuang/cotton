@@ -49,7 +49,7 @@ toml = "0.8.12"
 tap = "1.0.1"
 url = { version = "2.5.0", features = ["serde"] }
 rand = "0.8.5"
-which = "6.0.0"
+which = "6.0.1"
 
 [profile.dev]
 opt-level = 3
