@@ -14,8 +14,8 @@ use std::{
     env::consts::{ARCH, OS},
     fmt::Display,
 };
-use tokio::fs::{read_to_string, File};
-use tokio::io::AsyncWriteExt;
+use tokio::fs::{read_to_string, File, OpenOptions};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::instrument;
 
 use crate::package::Package;
@@ -151,8 +151,18 @@ pub async fn read_package() -> Result<Package> {
     read_json("package.json").await
 }
 
-pub async fn read_package_as_value() -> Result<Value> {
-    read_json("package.json").await
+pub async fn read_or_create_package<T: DeserializeOwned>() -> Result<T> {
+    let mut s = String::new();
+    OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open("package.json")
+        .await?
+        .read_to_string(&mut s)
+        .await?;
+    Ok(serde_json::from_str(&s)?)
 }
 
 pub async fn save_package(package: &Value) -> Result<()> {
