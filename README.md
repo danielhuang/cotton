@@ -12,9 +12,32 @@
 
 **Speedy:** With a fast network, `cotton install` runs faster than `rm -rf node_modules`.
 
-**Trouble free:** Ever run into errors when you forget to run `yarn` after pulling? No more. With Cotton, `node_modules` would never get out of sync.
+**Trouble free:** Ever run into errors when you forget to run `yarn`? No more. With Cotton, `node_modules` would never get out of sync.
 
 **Quickstart** for [Netlify](#using-netlify) • [Cloudflare Pages](#using-cloudflare-pages)
+
+## Benchmarks
+
+### [Bun's benchmark](https://github.com/oven-sh/bun/tree/main/bench/install)
+
+| Tool | With lockfile and cache |
+| --- | --- |
+| Cotton | **0.272s** |
+| Bun | 0.356s |
+| pnpm | 2.332s |
+| Yarn | 2.775s |
+| npm | 4.309s |
+
+### Installing packages used by [create-react-app](https://create-react-app.dev/):
+
+| Tool | Initial install | With lockfile only | With lockfile and cache |
+| --- | --- | --- | --- |
+| Cotton | **4.0s** | **1.8s** | **0.3s** |
+| pnpm | 24.3s | 17.9s | 5.5s |
+| Yarn | 31.9s | 27.0s | 10.6s |
+| npm | 35.4s | 21.3s | 13.0s |
+
+See [benchmark](benchmark.md) for more information.
 
 ## Installation
 
@@ -112,31 +135,6 @@ This would disable Netlify's cache.
 ### Using Cloudflare Pages
 
 Set the environment variable `NPM_FLAGS` to `--version`. Make sure that there is no `yarn.lock` in the repository.
-
-## Comparison with other package managers
-
-### [Bun's benchmark](https://github.com/oven-sh/bun/tree/main/bench/install)
-
-| Tool | With lockfile and cache |
-| --- | --- |
-| Cotton | **0.272s** |
-| Bun | 0.356s |
-| pnpm | 2.332s |
-| Yarn | 2.775s |
-| npm | 4.309s |
-
-### Installing packages used by [create-react-app](https://create-react-app.dev/):
-
-![Hyperfine benchmark image](https://cdn.discordapp.com/attachments/355822466117009420/1080972798270390333/image.png)
-
-| Tool | Initial install | With lockfile only | With lockfile and cache |
-| --- | --- | --- | --- |
-| Cotton | **4.0s** | **1.8s** | **0.3s** |
-| pnpm | 24.3s | 17.9s | 5.5s |
-| Yarn | 31.9s | 27.0s | 10.6s |
-| npm | 35.4s | 21.3s | 13.0s |
-
-See [benchmark](benchmark.md) for more information.
 
 ## Limitations
 
