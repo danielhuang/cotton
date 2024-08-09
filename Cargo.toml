@@ -36,7 +36,7 @@ reqwest = { version = "0.12.4", features = [
   "deflate",
   "http2",
 ], default-features = false }
-rustc-hash = "1.1.0"
+rustc-hash = "2.0.0"
 serde = { version = "1.0.200", features = ["derive", "rc"] }
 serde_json = { version = "1.0.116", features = ["preserve_order"] }
 serde_path_to_error = "0.1.16"
