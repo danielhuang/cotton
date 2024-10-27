@@ -583,7 +583,7 @@ async fn main() -> Result<()> {
                 queue.push_back((name.clone(), version.clone()));
             } else {
                 for (req, resolved) in graph.relations.iter() {
-                    if name == &req.name {
+                    if name == req.name {
                         queue.push_back((name.clone(), resolved.version.clone()));
                     }
                 }
