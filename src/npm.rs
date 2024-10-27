@@ -87,30 +87,30 @@ async fn select_registry(name: &str) -> Result<Registry> {
 }
 
 #[tracing::instrument]
-pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
-    static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(CLIENT_LIMIT));
-    let _permit = S.acquire().await.unwrap();
+pub async fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
+    #[tracing::instrument]
+    async fn fetch_package(name: &str) -> Result<RegistryResponse> {
+        static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(CLIENT_LIMIT));
+        let _permit = S.acquire().await.unwrap();
 
-    let selected_registry = select_registry(name).await?;
+        let selected_registry = select_registry(name).await?;
 
-    retry(|| async {
-        decode_json(
-            &CLIENT_Z
-                .get(format!("{}/{name}", selected_registry.url))
-                .pipe(|x| client_auth(x, selected_registry.auth.as_ref()))?
-                .send()
-                .await?
-                .error_for_status()?
-                .bytes()
-                .await?,
-        )
-        .map_err(|e| eyre!("[{name}] {e}"))
-    })
-    .await
-}
+        retry(|| async {
+            decode_json(
+                &CLIENT_Z
+                    .get(format!("{}/{name}", selected_registry.url))
+                    .pipe(|x| client_auth(x, selected_registry.auth.as_ref()))?
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .bytes()
+                    .await?,
+            )
+            .map_err(|e| eyre!("[{name}] {e}"))
+        })
+        .await
+    }
 
-#[tracing::instrument]
-pub async fn fetch_package_cached(name: &str) -> Result<Arc<RegistryResponse>> {
     static CACHE: Lazy<Cache<CompactString, ArcResult<Arc<RegistryResponse>>>> = Lazy::new(|| {
         Cache::new(|key: CompactString, _| async move {
             fetch_package(&key).await.map(Arc::new).map_err(Arc::new)
@@ -131,7 +131,7 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
 
     match &d.version {
         VersionReq::Other(tag) => {
-            let res = fetch_package_cached(&d.name).await?;
+            let res = fetch_package(&d.name).await?;
             let tag = res
                 .dist_tags
                 .get(tag)
@@ -149,7 +149,7 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
             Ok((version, Arc::new(package.clone().sub())))
         }
         VersionReq::Range(_) => {
-            let res = fetch_package_cached(&d.name).await?;
+            let res = fetch_package(&d.name).await?;
             let (version, package) = res
                 .versions
                 .iter()
