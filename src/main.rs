@@ -39,6 +39,7 @@ use std::collections::VecDeque;
 use std::env::{current_dir, current_exe, set_current_dir, set_var, temp_dir};
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::remove_dir_all;
+use std::io::ErrorKind;
 use std::os::unix::fs::symlink;
 use std::os::unix::prelude::OsStrExt;
 use std::{env, path::PathBuf, process::exit, time::Instant};
@@ -511,8 +512,13 @@ async fn main() -> Result<()> {
             }
         }
         Subcommand::Clean => {
-            remove_dir_all("node_modules")?;
-            remove_dir_all(".cotton")?;
+            for dir in ["node_modules", ".cotton"] {
+                match remove_dir_all(dir) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == ErrorKind::NotFound => {}
+                    r => r?,
+                }
+            }
         }
         Subcommand::Upgrade { pin } => {
             let package = read_package().await?;
