@@ -1,4 +1,4 @@
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Context, Result};
 use color_eyre::Report;
 use compact_str::{CompactString, ToCompactString};
 use node_semver::{Range, Version};
@@ -144,7 +144,7 @@ pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fu
             }
         }
     }
-    Err(last.unwrap().wrap_err("Failed all retries"))
+    Err(last.unwrap()).wrap_err("Failed all retries")
 }
 
 pub async fn read_package() -> Result<Package> {
