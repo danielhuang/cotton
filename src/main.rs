@@ -20,7 +20,6 @@ use futures::future::try_join_all;
 use futures::lock::Mutex;
 use futures_lite::future::race;
 use itertools::Itertools;
-use mimalloc::MiMalloc;
 use multimap::MultiMap;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::{execvp, Pid};
@@ -61,7 +60,7 @@ use crate::{
 };
 
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
