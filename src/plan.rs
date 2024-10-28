@@ -16,15 +16,12 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tap::Pipe;
-use tokio::{
-    fs::{
-        create_dir_all, metadata, read_dir, remove_dir_all, remove_file, set_permissions, symlink,
-        File,
-    },
-    sync::Semaphore,
-    task::{spawn_blocking, JoinHandle},
+use std::{
+    fs::{create_dir_all, exists, metadata, read_dir, remove_dir_all, set_permissions, File},
+    os::unix::fs::symlink,
 };
+use tap::Pipe;
+use tokio::{sync::Semaphore, task::JoinHandle};
 use tokio_tar::Archive;
 use tokio_util::io::StreamReader;
 
@@ -33,7 +30,7 @@ use crate::{
     config::{client_auth, read_config},
     npm::{Dependency, DependencyTree},
     package::PackageMetadata,
-    progress::{log_progress, log_verbose, log_warning},
+    progress::{log_progress, log_verbose},
     scoped_path::scoped_join,
     util::{retry, VersionSpecifier, CLIENT, CLIENT_LIMIT},
 };
@@ -78,9 +75,9 @@ pub fn tree_size(trees: &FxHashMap<CompactString, DependencyTree>) -> usize {
 async fn download_package(dep: &Dependency) -> Result<()> {
     let target_path = scoped_join(".cotton/store", dep.id())?;
 
-    create_dir_all(&target_path).await?;
+    create_dir_all(&target_path)?;
 
-    if metadata(&target_path.join("_complete")).await.is_ok() {
+    if metadata(target_path.join("_complete")).is_ok() {
         log_verbose(&format!("Skipped downloading {}", dep.id()));
         return Ok(());
     }
@@ -118,7 +115,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         .await
         .map_err(|e| eyre!("{e:?}"))?;
 
-    File::create(&target_path.join("_complete")).await?;
+    File::create(target_path.join("_complete"))?;
 
     log_progress(&format!("Downloaded {}", dep.id().bright_blue()));
 
@@ -135,30 +132,25 @@ pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     CACHE.get(dep).await.map_err(Report::msg)
 }
 
-async fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
-    fn hardlink_dir_sync(src: PathBuf, dst: PathBuf) -> io::Result<()> {
-        std::fs::create_dir_all(&dst)?;
-        let dir = std::fs::read_dir(src)?;
-        for entry in dir {
-            let entry = entry?;
-            let ty = entry.file_type()?;
-            if ty.is_dir() {
-                hardlink_dir_sync(entry.path(), dst.join(entry.file_name()))?;
-            } else {
-                std::fs::hard_link(entry.path(), dst.join(entry.file_name()))?;
-            }
+fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
+    std::fs::create_dir_all(&dst)?;
+    let dir = std::fs::read_dir(src)?;
+    for entry in dir {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            hardlink_dir(entry.path(), dst.join(entry.file_name()))?;
+        } else {
+            std::fs::hard_link(entry.path(), dst.join(entry.file_name()))?;
         }
-        Ok(())
     }
-
-    Ok(spawn_blocking(move || hardlink_dir_sync(src, dst)).await??)
+    Ok(())
 }
 
-#[tracing::instrument]
-async fn get_package_src(src: &Path) -> Result<PathBuf> {
-    let mut dir = read_dir(src).await?;
-    while let Some(entry) = dir.next_entry().await? {
-        let ty = entry.file_type().await?;
+fn get_package_src(src: &Path) -> Result<PathBuf> {
+    let mut dir = read_dir(src)?;
+    while let Some(entry) = dir.next().transpose()? {
+        let ty = entry.file_type()?;
         if ty.is_dir() {
             return Ok(entry.path());
         }
@@ -184,7 +176,7 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
     target_path = scoped_join("node_modules", target_path)?;
 
     let install_marker = target_path.join(format!(".installed!{}", dep.id()));
-    if metadata(&install_marker).await.is_ok() {
+    if exists(&install_marker)? {
         log_verbose(&format!(
             "Skipping installation for {}",
             dep.id().bright_blue()
@@ -192,35 +184,32 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
         return Ok(());
     }
 
-    let _ = remove_dir_all(&target_path).await;
+    let _ = remove_dir_all(&target_path);
 
     let src_path = scoped_join(".cotton/store", dep.id())?;
 
-    hardlink_dir(get_package_src(&src_path).await?, target_path).await?;
+    hardlink_dir(get_package_src(&src_path)?, target_path)?;
 
     if prefix.is_empty() {
         for (cmd, path) in &dep.bins {
             let path = path.to_compact_string();
             let mut path = PathBuf::from("../").join(&*dep.name).join(&*path);
-            if metadata(PathBuf::from("node_modules/.bin").join(&path))
-                .await
-                .is_err()
-            {
+            if !exists(PathBuf::from("node_modules/.bin").join(&path))? {
                 path.set_extension("js");
             }
             if !cmd.contains('/') {
                 let bin_path = PathBuf::from("node_modules/.bin").join(&**cmd);
-                if let Err(e) = symlink(&path, &bin_path).await {
+                if let Err(e) = symlink(&path, &bin_path) {
                     if e.kind() != ErrorKind::AlreadyExists {
                         return Err(e.into());
                     }
                 }
-                set_permissions(&bin_path, Permissions::from_mode(0o755)).await?;
+                set_permissions(&bin_path, Permissions::from_mode(0o755))?;
             }
         }
     }
 
-    File::create(&install_marker).await?;
+    File::create(&install_marker)?;
 
     log_progress(&format!("Installed {}", dep.id().bright_blue()));
 
