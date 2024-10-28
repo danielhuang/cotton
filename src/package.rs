@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     npm::PlatformMap,
-    util::{get_node_cpu, get_node_os, VersionReq},
+    util::{get_node_cpu, get_node_os, VersionSpecifier},
 };
 use color_eyre::eyre::Result;
 use compact_str::{CompactString, ToCompactString};
@@ -21,22 +21,22 @@ use serde_json::Value;
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct Package {
+pub struct PackageMetadata {
     pub name: CompactString,
     pub version: Option<Version>,
     pub bin: Option<Bin>,
     pub dist: Dist,
-    pub dependencies: BTreeMap<CompactString, VersionReq>,
-    pub optional_dependencies: BTreeMap<CompactString, VersionReq>,
-    pub dev_dependencies: FxHashMap<CompactString, VersionReq>,
+    pub dependencies: BTreeMap<CompactString, VersionSpecifier>,
+    pub optional_dependencies: BTreeMap<CompactString, VersionSpecifier>,
+    pub dev_dependencies: FxHashMap<CompactString, VersionSpecifier>,
     pub os: PlatformMap,
     pub cpu: PlatformMap,
     pub scripts: FxHashMap<CompactString, Value>,
 }
 
-impl Package {
-    pub fn sub(self) -> Subpackage {
-        Subpackage {
+impl PackageMetadata {
+    pub fn info(self) -> PackageInfo {
+        PackageInfo {
             name: self.name,
             dist: self.dist,
             dependencies: self.dependencies,
@@ -56,13 +56,13 @@ impl Package {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default, Hash)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct Subpackage {
+pub struct PackageInfo {
     pub name: CompactString,
     pub dist: Dist,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub dependencies: BTreeMap<CompactString, VersionReq>,
+    pub dependencies: BTreeMap<CompactString, VersionSpecifier>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub optional_dependencies: BTreeMap<CompactString, VersionReq>,
+    pub optional_dependencies: BTreeMap<CompactString, VersionSpecifier>,
     #[serde(skip_serializing_if = "PlatformMap::is_empty")]
     pub os: PlatformMap,
     #[serde(skip_serializing_if = "PlatformMap::is_empty")]
@@ -74,12 +74,12 @@ pub struct Subpackage {
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Deserialize)]
-pub struct VersionedSubpackage {
-    pub package: Arc<Subpackage>,
+pub struct VersionedPackageInfo {
+    pub package: Arc<PackageInfo>,
     pub version: Version,
 }
 
-impl Subpackage {
+impl PackageInfo {
     pub fn bins(&self) -> BTreeMap<CompactString, CompactString> {
         match &self.bin {
             Some(Bin::Multi(x)) => x.clone().into_iter().collect(),
@@ -90,11 +90,11 @@ impl Subpackage {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = DepReq> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = PackageSpecifier> + '_ {
         self.dependencies
             .iter()
             .chain(self.optional_dependencies.iter())
-            .map(|(n, v)| DepReq {
+            .map(|(n, v)| PackageSpecifier {
                 name: n.to_compact_string(),
                 version: v.to_owned(),
                 optional: self.optional_dependencies.contains_key(n),
@@ -119,13 +119,13 @@ pub struct Dist {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
-pub struct DepReq {
+pub struct PackageSpecifier {
     pub name: CompactString,
-    pub version: VersionReq,
+    pub version: VersionSpecifier,
     pub optional: bool,
 }
 
-impl Display for DepReq {
+impl Display for PackageSpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -137,7 +137,7 @@ impl Display for DepReq {
     }
 }
 
-impl Serialize for DepReq {
+impl Serialize for PackageSpecifier {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -146,7 +146,7 @@ impl Serialize for DepReq {
     }
 }
 
-impl<'de> Deserialize<'de> for DepReq {
+impl<'de> Deserialize<'de> for PackageSpecifier {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -166,7 +166,7 @@ impl<'de> Deserialize<'de> for DepReq {
     }
 }
 
-impl Debug for DepReq {
+impl Debug for PackageSpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {}", self.name, self.version)?;
         if self.optional {
@@ -176,13 +176,13 @@ impl Debug for DepReq {
     }
 }
 
-impl Package {
-    pub fn iter_all(&self) -> impl Iterator<Item = DepReq> + '_ {
+impl PackageMetadata {
+    pub fn iter_all(&self) -> impl Iterator<Item = PackageSpecifier> + '_ {
         self.dependencies
             .iter()
             .chain(self.dev_dependencies.iter())
             .chain(self.optional_dependencies.iter())
-            .map(|(n, v)| DepReq {
+            .map(|(n, v)| PackageSpecifier {
                 name: n.to_compact_string(),
                 version: v.to_owned(),
                 optional: self.optional_dependencies.contains_key(n),

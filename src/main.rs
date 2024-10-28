@@ -27,7 +27,7 @@ use nix::unistd::{execvp, Pid};
 use node_semver::Version;
 use npm::{fetch_package, Dependency};
 use once_cell::sync::Lazy;
-use package::{DepReq, Package};
+use package::{PackageMetadata, PackageSpecifier};
 use plan::tree_size;
 use progress::{log_progress, log_verbose};
 use rand::distributions::Alphanumeric;
@@ -130,7 +130,7 @@ pub enum Subcommand {
     DownloadAndExec { name: OsString, args: Vec<OsString> },
 }
 
-async fn prepare_plan(package: &Package) -> Result<Plan> {
+async fn prepare_plan(package: &PackageMetadata) -> Result<Plan> {
     log_progress("Preparing");
 
     let mut graph = load_graph_from_lockfile().await;
@@ -165,7 +165,7 @@ async fn read_plan(path: &str) -> Result<Plan> {
     Ok(serde_json::from_str(&plan)?)
 }
 
-pub async fn verify_installation(package: &Package, plan: &Plan) -> Result<bool> {
+pub async fn verify_installation(package: &PackageMetadata, plan: &Plan) -> Result<bool> {
     let installed = read_plan("node_modules/.cotton/plan.json").await?;
 
     if &installed != plan {
@@ -342,7 +342,7 @@ pub async fn shell() -> Result<String> {
     Err(eyre!("No shell found"))
 }
 
-fn build_map(graph: &Graph) -> Result<MultiMap<(CompactString, Version), DepReq>> {
+fn build_map(graph: &Graph) -> Result<MultiMap<(CompactString, Version), PackageSpecifier>> {
     let mut map = MultiMap::new();
 
     for (from, to) in graph.relations.iter() {

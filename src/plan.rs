@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::Permissions,
-    io,
+    io::{self, ErrorKind},
     os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
     sync::Arc,
@@ -32,10 +32,10 @@ use crate::{
     cache::Cache,
     config::{client_auth, read_config},
     npm::{Dependency, DependencyTree},
-    package::Package,
+    package::PackageMetadata,
     progress::{log_progress, log_verbose, log_warning},
     scoped_path::scoped_join,
-    util::{retry, VersionReq, CLIENT, CLIENT_LIMIT},
+    util::{retry, VersionSpecifier, CLIENT, CLIENT_LIMIT},
 };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -49,7 +49,7 @@ impl Plan {
         Self { trees }
     }
 
-    pub fn satisfies(&self, package: &Package) -> bool {
+    pub fn satisfies(&self, package: &PackageMetadata) -> bool {
         let map: FxHashMap<_, _> = self
             .trees
             .values()
@@ -57,7 +57,7 @@ impl Plan {
             .collect();
         package.iter_all().all(|req| {
             if let Some(version) = map.get(&req.name) {
-                if let VersionReq::Range(range) = req.version {
+                if let VersionSpecifier::Range(range) = req.version {
                     return range.satisfies(version);
                 }
             }
@@ -127,12 +127,12 @@ async fn download_package(dep: &Dependency) -> Result<()> {
 
 pub async fn download_package_shared(dep: Dependency) -> Result<()> {
     static CACHE: Lazy<Cache<Dependency, Result<(), Arc<Report>>>> = Lazy::new(|| {
-        Cache::new(|key: Dependency, _| async move {
+        Cache::new(|key: Dependency| async move {
             retry(|| download_package(&key)).await.map_err(Arc::new)
         })
     });
 
-    CACHE.get(dep, ()).await.map_err(Report::msg)
+    CACHE.get(dep).await.map_err(Report::msg)
 }
 
 async fn hardlink_dir(src: PathBuf, dst: PathBuf) -> Result<()> {
@@ -210,16 +210,12 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
             }
             if !cmd.contains('/') {
                 let bin_path = PathBuf::from("node_modules/.bin").join(&**cmd);
-                let _ = remove_file(&bin_path).await;
-                if symlink(&path, &bin_path).await.is_err() {
-                    log_warning(&format!("Unable to save binary: {cmd}"));
+                if let Err(e) = symlink(&path, &bin_path).await {
+                    if e.kind() != ErrorKind::AlreadyExists {
+                        return Err(e.into());
+                    }
                 }
-                if set_permissions(&bin_path, Permissions::from_mode(0o755))
-                    .await
-                    .is_err()
-                {
-                    log_warning(&format!("Unable to set permissions: {cmd}"));
-                }
+                set_permissions(&bin_path, Permissions::from_mode(0o755)).await?;
             }
         }
     }

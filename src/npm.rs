@@ -28,16 +28,16 @@ use tokio_util::io::StreamReader;
 use crate::{
     cache::Cache,
     config::{client_auth, read_config, Registry},
-    package::{DepReq, Dist, Package, Subpackage},
+    package::{Dist, PackageInfo, PackageMetadata, PackageSpecifier},
     progress::{log_progress, log_verbose},
-    util::{decode_json, retry, ArcResult, VersionReq, CLIENT, CLIENT_LIMIT, CLIENT_Z},
+    util::{decode_json, retry, ArcResult, VersionSpecifier, CLIENT, CLIENT_LIMIT, CLIENT_Z},
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct RegistryResponse {
     #[serde(rename = "dist-tags")]
     pub dist_tags: FxHashMap<CompactString, CompactString>,
-    pub versions: IndexMap<Version, Package>,
+    pub versions: IndexMap<Version, PackageMetadata>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Default)]
@@ -112,13 +112,13 @@ pub async fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
     }
 
     static CACHE: Lazy<Cache<CompactString, ArcResult<Arc<RegistryResponse>>>> = Lazy::new(|| {
-        Cache::new(|key: CompactString, _| async move {
+        Cache::new(|key: CompactString| async move {
             fetch_package(&key).await.map(Arc::new).map_err(Arc::new)
         })
     });
 
     CACHE
-        .get(name.to_compact_string(), ())
+        .get(name.to_compact_string())
         .await
         .map_err(Report::msg)
 }
@@ -126,11 +126,11 @@ pub async fn fetch_package(name: &str) -> Result<Arc<RegistryResponse>> {
 #[tracing::instrument]
 #[cached(result)]
 #[async_recursion]
-pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
+pub async fn fetch_versioned_package(d: PackageSpecifier) -> Result<(Version, Arc<PackageInfo>)> {
     log_progress(&format!("Fetched {}", d.name.bright_blue()));
 
     match &d.version {
-        VersionReq::Other(tag) => {
+        VersionSpecifier::Other(tag) => {
             let res = fetch_package(&d.name).await?;
             let tag = res
                 .dist_tags
@@ -146,9 +146,9 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
                 )
             })?;
 
-            Ok((version, Arc::new(package.clone().sub())))
+            Ok((version, Arc::new(package.clone().info())))
         }
-        VersionReq::Range(_) => {
+        VersionSpecifier::Range(_) => {
             let res = fetch_package(&d.name).await?;
             let (version, package) = res
                 .versions
@@ -163,9 +163,9 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
                     )
                 })?;
 
-            Ok((version.clone(), Arc::new(package.clone().sub())))
+            Ok((version.clone(), Arc::new(package.clone().info())))
         }
-        VersionReq::DirectUrl(url) => {
+        VersionSpecifier::DirectUrl(url) => {
             log_verbose(&format!(
                 "Downloading metadata for {}@{}",
                 d.name, d.version
@@ -190,35 +190,35 @@ pub async fn fetch_dep_single(d: DepReq) -> Result<(Version, Arc<Subpackage>)> {
                     let mut buf = String::new();
                     entry.read_to_string(&mut buf).await?;
 
-                    let mut package: Package = serde_json::from_str(&buf)?;
+                    let mut package: PackageMetadata = serde_json::from_str(&buf)?;
                     let version = package.version.clone().wrap_err_with(|| {
                         format!("Package from {url} does not specify a version")
                     })?;
 
                     package.dist.tarball = url.to_compact_string();
 
-                    return Ok((version, Arc::new(package.sub())));
+                    return Ok((version, Arc::new(package.info())));
                 }
             }
 
             Err(eyre!("Package from {url} does not contain package.json"))
         }
-        VersionReq::Prefixed(prefixed) => match prefixed.prefix.as_str() {
+        VersionSpecifier::Prefixed(prefixed) => match prefixed.prefix.as_str() {
             "npm" => {
                 let (actual_name, actual_req) = prefixed
                     .rest
                     .rsplit_once('@')
                     .ok_or_else(|| eyre!("Invalid prefixed version: {prefixed}"))?;
 
-                let actual_req = VersionReq::Range(actual_req.parse()?);
+                let actual_req = VersionSpecifier::Range(actual_req.parse()?);
 
-                let inner_req = DepReq {
+                let inner_req = PackageSpecifier {
                     name: actual_name.to_compact_string(),
                     version: actual_req,
                     optional: d.optional,
                 };
 
-                let (inner_version, mut inner_pkg) = fetch_dep_single(inner_req).await?;
+                let (inner_version, mut inner_pkg) = fetch_versioned_package(inner_req).await?;
                 Arc::make_mut(&mut inner_pkg).name = d.name;
 
                 Ok((inner_version, inner_pkg))

@@ -1,5 +1,5 @@
 use crate::npm::{Dependency, DependencyTree};
-use crate::package::{DepReq, Subpackage, VersionedSubpackage};
+use crate::package::{PackageInfo, PackageSpecifier, VersionedPackageInfo};
 use crate::plan::download_package_shared;
 use crate::progress::log_verbose;
 use crate::{npm, ARGS};
@@ -20,20 +20,20 @@ use tokio::task::JoinHandle;
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct Graph {
     #[serde(flatten)]
-    pub relations: FxHashMap<DepReq, VersionedSubpackage>,
+    pub relations: FxHashMap<PackageSpecifier, VersionedPackageInfo>,
 }
 
 impl Graph {
     pub async fn append(
         &mut self,
-        remaining: impl Iterator<Item = DepReq>,
+        remaining: impl Iterator<Item = PackageSpecifier>,
         download: bool,
     ) -> color_eyre::Result<()> {
         fn queue_resolve(
             send: flume::Sender<JoinHandle<color_eyre::Result<()>>>,
-            req: DepReq,
-            relations: Arc<DashMap<DepReq, VersionedSubpackage>>,
-            seen: Arc<DashSet<DepReq>>,
+            req: PackageSpecifier,
+            relations: Arc<DashMap<PackageSpecifier, VersionedPackageInfo>>,
+            seen: Arc<DashSet<PackageSpecifier>>,
             download: bool,
         ) -> color_eyre::Result<()> {
             if !seen.insert(req.clone()) {
@@ -55,7 +55,7 @@ impl Graph {
             }
 
             send.clone().send(tokio::spawn(async move {
-                let (version, subpackage) = npm::fetch_dep_single(req.clone()).await?;
+                let (version, subpackage) = npm::fetch_versioned_package(req.clone()).await?;
 
                 if download && subpackage.supported() {
                     tokio::spawn(download_package_shared(Dependency {
@@ -69,7 +69,7 @@ impl Graph {
 
                 relations.insert(
                     req.clone(),
-                    VersionedSubpackage {
+                    VersionedPackageInfo {
                         package: subpackage.clone(),
                         version,
                     },
@@ -117,7 +117,10 @@ impl Graph {
         Ok(())
     }
 
-    pub fn resolve_req(&self, req: &DepReq) -> color_eyre::Result<VersionedSubpackage, Report> {
+    pub fn resolve_req(
+        &self,
+        req: &PackageSpecifier,
+    ) -> color_eyre::Result<VersionedPackageInfo, Report> {
         Ok(self
             .relations
             .get(req)
@@ -135,8 +138,8 @@ impl Graph {
 
     fn build_tree(
         &self,
-        package: &VersionedSubpackage,
-        stack: &mut Vec<VersionedSubpackage>,
+        package: &VersionedPackageInfo,
+        stack: &mut Vec<VersionedPackageInfo>,
         exclude: &FxHashSet<(CompactString, Version)>,
         optional: bool,
     ) -> color_eyre::Result<Option<DependencyTree>> {
@@ -202,7 +205,10 @@ impl Graph {
         Ok(Some(tree))
     }
 
-    pub fn build_trees(&self, root_reqs: &[DepReq]) -> color_eyre::Result<Vec<DependencyTree>> {
+    pub fn build_trees(
+        &self,
+        root_reqs: &[PackageSpecifier],
+    ) -> color_eyre::Result<Vec<DependencyTree>> {
         let mut is_optional = FxHashMap::default();
 
         let mut reqs = FxHashMap::default();
@@ -228,7 +234,7 @@ impl Graph {
             }
         }
 
-        let mut hoisted: FxHashMap<_, VersionedSubpackage> = FxHashMap::default();
+        let mut hoisted: FxHashMap<_, VersionedPackageInfo> = FxHashMap::default();
         for dep in flat_deps {
             if let Some(prev) = hoisted.get(&dep.package.name) {
                 if dep.version > prev.version {
@@ -265,7 +271,7 @@ impl Graph {
 #[derive(Serialize, Deserialize, Default)]
 pub struct Lockfile {
     #[serde(flatten)]
-    pub relations: BTreeMap<DepReq, (Version, Subpackage)>,
+    pub relations: BTreeMap<PackageSpecifier, (Version, PackageInfo)>,
 }
 
 impl Lockfile {
@@ -287,7 +293,7 @@ impl Lockfile {
                 .map(|(req, pkg)| {
                     (
                         req,
-                        VersionedSubpackage {
+                        VersionedPackageInfo {
                             package: Arc::new(pkg.1),
                             version: pkg.0,
                         },

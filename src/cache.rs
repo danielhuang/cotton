@@ -10,36 +10,27 @@ use crate::progress::PROGRESS_BAR;
 
 type SharedBoxFuture<T> = Shared<BoxFuture<'static, T>>;
 
-pub struct Cache<
-    K: Eq + Hash + Clone + Send + Debug + 'static,
-    V: Clone + Send + 'static,
-    M: Send + Clone + 'static = (),
-> {
-    loader: Box<dyn Fn(K, M) -> BoxFuture<'static, V> + Send + Sync + 'static>,
-    map: DashMap<K, (SharedBoxFuture<V>, M)>,
+pub struct Cache<K: Eq + Hash + Clone + Send + Debug + 'static, V: Clone + Send + 'static> {
+    loader: Box<dyn Fn(K) -> BoxFuture<'static, V> + Send + Sync + 'static>,
+    map: DashMap<K, SharedBoxFuture<V>>,
 }
 
-impl<
-        K: Eq + Hash + Clone + Send + Debug + 'static,
-        V: Clone + Send + 'static,
-        M: Send + Clone + 'static,
-    > Cache<K, V, M>
-{
+impl<K: Eq + Hash + Clone + Send + Debug + 'static, V: Clone + Send + 'static> Cache<K, V> {
     pub fn new<T, F>(loader: T) -> Self
     where
         F: Future<Output = V> + Sized + Send + 'static,
-        T: Fn(K, M) -> F + Send + Sync + Clone + 'static,
+        T: Fn(K) -> F + Send + Sync + Clone + 'static,
     {
         let loader = Arc::new(loader);
 
         Self {
             loader: Box::new({
-                move |key, meta| {
+                move |key| {
                     let loader = loader.clone();
                     Box::pin({
                         async move {
                             PROGRESS_BAR.inc_length(1);
-                            let v = loader(key, meta).await;
+                            let v = loader(key).await;
                             PROGRESS_BAR.inc(1);
                             v
                         }
@@ -50,13 +41,13 @@ impl<
         }
     }
 
-    pub async fn get(&self, key: K, meta: M) -> V {
+    pub async fn get(&self, key: K) -> V {
         let f = self
             .map
             .entry(key.clone())
-            .or_insert_with(|| ((self.loader)(key, meta.clone()).boxed().shared(), meta))
+            .or_insert_with(|| (self.loader)(key).boxed().shared())
             .clone();
 
-        f.0.await
+        f.await
     }
 }

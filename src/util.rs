@@ -15,11 +15,11 @@ use std::{
     env::consts::{ARCH, OS},
     fmt::Display,
 };
-use tokio::fs::{read_to_string, File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::fs::{read_to_string, File};
+use tokio::io::AsyncWriteExt;
 use tracing::instrument;
 
-use crate::package::Package;
+use crate::package::PackageMetadata;
 use crate::progress::log_warning;
 use crate::resolve::{Graph, Lockfile};
 
@@ -44,18 +44,18 @@ pub fn decode_json<T: DeserializeOwned>(
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
-pub struct PrefixedVersionReq {
+pub struct VersionSpecifierPrefixed {
     pub prefix: CompactString,
     pub rest: CompactString,
 }
 
-impl Display for PrefixedVersionReq {
+impl Display for VersionSpecifierPrefixed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.prefix, self.rest)
     }
 }
 
-impl Serialize for PrefixedVersionReq {
+impl Serialize for VersionSpecifierPrefixed {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -64,7 +64,7 @@ impl Serialize for PrefixedVersionReq {
     }
 }
 
-impl<'de> Deserialize<'de> for PrefixedVersionReq {
+impl<'de> Deserialize<'de> for VersionSpecifierPrefixed {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -85,31 +85,31 @@ impl<'de> Deserialize<'de> for PrefixedVersionReq {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 #[serde(untagged)]
-pub enum VersionReq {
+pub enum VersionSpecifier {
     Range(Range),
-    Prefixed(PrefixedVersionReq),
+    Prefixed(VersionSpecifierPrefixed),
     DirectUrl(Url),
     Other(CompactString),
 }
 
-impl VersionReq {
+impl VersionSpecifier {
     pub fn satisfies(&self, v: &Version) -> bool {
         match self {
-            VersionReq::Range(r) => r.satisfies(v),
-            VersionReq::Prefixed(_) => true,
-            VersionReq::DirectUrl(_) => true,
-            VersionReq::Other(_) => false,
+            VersionSpecifier::Range(r) => r.satisfies(v),
+            VersionSpecifier::Prefixed(_) => true,
+            VersionSpecifier::DirectUrl(_) => true,
+            VersionSpecifier::Other(_) => false,
         }
     }
 }
 
-impl Display for VersionReq {
+impl Display for VersionSpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VersionReq::Range(a) => a.fmt(f),
-            VersionReq::Prefixed(a) => a.fmt(f),
-            VersionReq::DirectUrl(a) => a.fmt(f),
-            VersionReq::Other(a) => a.fmt(f),
+            VersionSpecifier::Range(a) => a.fmt(f),
+            VersionSpecifier::Prefixed(a) => a.fmt(f),
+            VersionSpecifier::DirectUrl(a) => a.fmt(f),
+            VersionSpecifier::Other(a) => a.fmt(f),
         }
     }
 }
@@ -148,7 +148,7 @@ pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fu
     Err(last.unwrap()).wrap_err("Failed all retries")
 }
 
-pub async fn read_package() -> Result<Package> {
+pub async fn read_package() -> Result<PackageMetadata> {
     read_json("package.json").await
 }
 
