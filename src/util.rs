@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{de::Error, Deserialize, Serialize};
 use serde_json::Value;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::Arc;
 use std::{
@@ -151,17 +152,12 @@ pub async fn read_package() -> Result<Package> {
     read_json("package.json").await
 }
 
-pub async fn read_or_create_package<T: DeserializeOwned>() -> Result<T> {
-    let mut s = String::new();
-    OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open("package.json")
-        .await?
-        .read_to_string(&mut s)
-        .await?;
+pub async fn read_package_or_default<T: DeserializeOwned>() -> Result<T> {
+    let s = match read_to_string("package.json").await {
+        Ok(s) => s,
+        Err(e) if e.kind() == ErrorKind::NotFound => "{}".into(),
+        r => r?,
+    };
     Ok(serde_json::from_str(&s)?)
 }
 

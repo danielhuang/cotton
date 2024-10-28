@@ -48,7 +48,7 @@ use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use util::{read_or_create_package, read_package, save_package, write_json};
+use util::{read_package, read_package_or_default, save_package, write_json};
 use watch::async_watch;
 use which::which;
 
@@ -281,7 +281,7 @@ pub async fn init_storage() -> Result<()> {
 }
 
 async fn add_packages(names: &[CompactString], dev: bool, pin: bool) -> Result<()> {
-    let mut package: Value = read_or_create_package().await?;
+    let mut package: Value = read_package_or_default().await?;
     let dependencies = package
         .as_object_mut()
         .wrap_err("`package.json` is invalid")?
@@ -546,7 +546,7 @@ async fn main() -> Result<()> {
                 PROGRESS_BAR.suspend(|| println!("Note: no packages specified"));
             }
 
-            let mut package: Value = read_or_create_package().await?;
+            let mut package: Value = read_package_or_default().await?;
             let dependencies = package
                 .as_object_mut()
                 .wrap_err("`package.json` is invalid")?
