@@ -20,13 +20,13 @@
 
 ### [Bun's benchmark](https://github.com/oven-sh/bun/tree/main/bench/install)
 
-| Tool    | With lockfile and cache |
-| ------- | ----------------------- |
-| Cotton  | **0.270s**              |
-| Bun 1.2 | 0.536s                  |
-| pnpm    | 2.015s                  |
-| Yarn    | 2.633s                  |
-| npm     | 4.031s                  |
+| Tool         | With lockfile and cache |
+| ------------ | ----------------------- |
+| Cotton       | **0.270s**              |
+| Bun 1.2      | 0.536s                  |
+| pnpm 9.15.4  | 2.015s                  |
+| Yarn 1.22.22 | 2.633s                  |
+| npm 10.8.2   | 4.031s                  |
 
 ### Installing packages used by [create-react-app](https://create-react-app.dev/):
 
