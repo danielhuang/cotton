@@ -20,22 +20,22 @@
 
 ### [Bun's benchmark](https://github.com/oven-sh/bun/tree/main/bench/install)
 
-| Tool | With lockfile and cache |
-| --- | --- |
-| Cotton | **0.272s** |
-| Bun | 0.356s |
-| pnpm | 2.332s |
-| Yarn | 2.775s |
-| npm | 4.309s |
+| Tool    | With lockfile and cache |
+| ------- | ----------------------- |
+| Cotton  | **0.270s**              |
+| Bun 1.2 | 0.536s                  |
+| pnpm    | 2.015s                  |
+| Yarn    | 2.633s                  |
+| npm     | 4.031s                  |
 
 ### Installing packages used by [create-react-app](https://create-react-app.dev/):
 
-| Tool | Initial install | With lockfile only | With lockfile and cache |
-| --- | --- | --- | --- |
-| Cotton | **4.0s** | **1.8s** | **0.3s** |
-| pnpm | 24.3s | 17.9s | 5.5s |
-| Yarn | 31.9s | 27.0s | 10.6s |
-| npm | 35.4s | 21.3s | 13.0s |
+| Tool   | Initial install | With lockfile only | With lockfile and cache |
+| ------ | --------------- | ------------------ | ----------------------- |
+| Cotton | **4.0s**        | **1.8s**           | **0.3s**                |
+| pnpm   | 24.3s           | 17.9s              | 5.5s                    |
+| Yarn   | 31.9s           | 27.0s              | 10.6s                   |
+| npm    | 35.4s           | 21.3s              | 13.0s                   |
 
 See [benchmark](benchmark.md) for more information.
 
@@ -101,6 +101,7 @@ allow_install_scripts = true
 ## Using as part of CI/CD?
 
 In order to use Cotton, you have 2 options:
+
 - Commit the binary to the repository, working similarly to committing Yarn 2+ (recommended)
 - Download Cotton on-demand as part of the build process
 
@@ -109,6 +110,7 @@ If the binary is committed to the repository, use `./cotton` instead of `cotton`
 ### Using Netlify
 
 First, modify the configuration in `netlify.toml`, and add these lines:
+
 ```toml
 [build.environment]
   NPM_FLAGS="--version"
@@ -138,4 +140,4 @@ Set the environment variable `NPM_FLAGS` to `--version`. Make sure that there is
 
 ## Limitations
 
-* Cotton does not currently support Git repositories or local paths as dependencies; only registries and direct urls are supported.
+- Cotton does not currently support Git repositories or local paths as dependencies; only registries and direct urls are supported.
