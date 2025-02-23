@@ -385,7 +385,7 @@ dependencies = [
  "node-semver",
  "notify",
  "once_cell",
- "owo-colors 4.1.0",
+ "owo-colors 4.2.0",
  "rand",
  "reqwest",
  "rustc-hash",
@@ -1361,9 +1361,9 @@ checksum = "69dc4ec9e7e12502579e09e8a53c6a305b3aceb62ad5c307a62f7c3eada78324"
 
 [[package]]
 name = "owo-colors"
-version = "4.1.0"
+version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb37767f6569cd834a413442455e0f066d0d522de8630436e2a1761d9726ba56"
+checksum = "1036865bb9422d3300cf723f657c2851d0e9ab12567854b1f4eba3d77decf564"
 
 [[package]]
 name = "parking"
