@@ -22,6 +22,7 @@ use tracing::instrument;
 use crate::package::PackageMetadata;
 use crate::progress::log_warning;
 use crate::resolve::{Graph, Lockfile};
+use crate::ARGS;
 
 pub const CLIENT_LIMIT: usize = 100;
 
@@ -132,11 +133,9 @@ pub fn get_node_cpu() -> &'static str {
     }
 }
 
-const RETRY_LIMIT: usize = 3;
-
 pub async fn retry<T, Fut: Future<Output = Result<T>>>(mut f: impl FnMut() -> Fut) -> Result<T> {
     let mut last = None;
-    for _ in 0..RETRY_LIMIT {
+    for _ in 0..ARGS.retry_limit {
         match f().await {
             Ok(x) => return Ok(x),
             Err(e) => {

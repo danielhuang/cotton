@@ -74,6 +74,9 @@ pub struct Args {
     /// Run in a custom working directory
     #[clap(long, global = true, alias = "cwd")]
     working_dir: Option<PathBuf>,
+    /// Maximum number of retry attempts if network requests fail
+    #[clap(long, global = true, default_value = "3")]
+    retry_limit: usize,
     #[clap(subcommand)]
     cmd: Subcommand,
 }
