@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+astral-tokio-tar = { git = "https://github.com/astral-sh/tokio-tar", rev = "1408d422478c110399444ad9d9b7cebc0b0afa76" }
 async-compression = { version = "0.4.9", features = ["tokio", "gzip"] }
 async-recursion = "1.1.1"
 cached = "0.44.0"
@@ -40,7 +41,6 @@ serde = { version = "1.0.200", features = ["derive", "rc"] }
 serde_json = { version = "1.0.116", features = ["preserve_order"] }
 serde_path_to_error = "0.1.16"
 tokio = { version = "1.37.0", features = ["full"] }
-tokio-tar = { git = "https://github.com/danielhuang/tokio-tar", rev = "ac063a10224a9dcb16967e792c3075e0ee8bb1a7" }
 tokio-util = { version = "0.7.10", features = ["compat"] }
 tracing = "0.1.40"
 tracing-error = "0.2.0"

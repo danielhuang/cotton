@@ -4,7 +4,7 @@ use color_eyre::{
     Report,
 };
 use compact_str::{CompactString, ToCompactString};
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
@@ -94,7 +94,7 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         .find(|x| dep.dist.tarball.starts_with(&x.url))
         .and_then(|x| x.auth);
 
-    let res = CLIENT
+    let mut res = CLIENT
         .get(&*dep.dist.tarball)
         .pipe(|x| client_auth(x, registry_auth.as_ref()))?
         .send()
@@ -103,7 +103,18 @@ async fn download_package(dep: &Dependency) -> Result<()> {
         .bytes_stream()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e));
 
-    drop(permit);
+    let res = {
+        let (tx, rx) = flume::unbounded();
+        tokio::spawn(async move {
+            while let Some(buf) = res.next().await {
+                if tx.send_async(buf).await.is_err() {
+                    break;
+                }
+            }
+            drop(permit);
+        });
+        rx.into_stream()
+    };
 
     let reader = StreamReader::new(res);
     let reader = GzipDecoder::new(reader);
