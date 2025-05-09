@@ -47,7 +47,7 @@ use tokio::{fs::read_to_string, process::Command};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use util::{read_package, read_package_or_default, save_package, write_json};
+use util::{read_json, read_package, read_package_or_default, save_package, write_json};
 use watch::async_watch;
 use which::which;
 
@@ -177,13 +177,15 @@ pub async fn verify_installation(package: &PackageMetadata, plan: &Plan) -> Resu
     Ok(installed.satisfies(package))
 }
 
-async fn exec_install_script(root: &Dependency, stack: &[CompactString]) -> Result<()> {
+async fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
     let path = stack.join("/node_modules/");
 
     let dir = scoped_join("node_modules", path)?;
 
+    let package_json: PackageMetadata = read_json(&dir.join("package.json")).await?;
+
     for script_name in ["preinstall", "install", "postinstall"] {
-        if let Some(script) = root.scripts.get(script_name) {
+        if let Some(Value::String(script)) = package_json.scripts.get(script_name) {
             PROGRESS_BAR.suspend(|| {
                 println!("Executing {script_name} script for {}", stack.join(" > "));
             });
@@ -206,7 +208,7 @@ async fn exec_install_script(root: &Dependency, stack: &[CompactString]) -> Resu
 
 #[async_recursion]
 async fn exec_install_scripts(tree: &DependencyTree, stack: &mut Vec<CompactString>) -> Result<()> {
-    exec_install_script(&tree.root, stack).await?;
+    exec_install_scripts_in(stack).await?;
 
     stack.push(tree.root.name.clone());
     for tree in tree.children.values() {
