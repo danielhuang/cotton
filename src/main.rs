@@ -182,7 +182,16 @@ async fn exec_install_scripts_in(stack: &[CompactString]) -> Result<()> {
 
     let dir = scoped_join("node_modules", path)?;
 
-    let package_json: PackageMetadata = read_json(&dir.join("package.json")).await?;
+    let package_json = match read_to_string(dir.join("package.json")).await {
+        Ok(x) => x,
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            // assume missing package.json implies no install scripts
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    let package_json: PackageMetadata = serde_json::from_str(&package_json)?;
 
     for script_name in ["preinstall", "install", "postinstall"] {
         if let Some(Value::String(script)) = package_json.scripts.get(script_name) {
