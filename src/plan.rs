@@ -201,25 +201,6 @@ pub async fn install_package(prefix: &[CompactString], dep: &Dependency) -> Resu
 
     hardlink_dir(get_package_src(&src_path)?, target_path)?;
 
-    if prefix.is_empty() {
-        for (cmd, path) in &dep.bins {
-            let path = path.to_compact_string();
-            let mut path = PathBuf::from("../").join(&*dep.name).join(&*path);
-            if !exists(PathBuf::from("node_modules/.bin").join(&path))? {
-                path.set_extension("js");
-            }
-            if !cmd.contains('/') {
-                let bin_path = PathBuf::from("node_modules/.bin").join(&**cmd);
-                if let Err(e) = symlink(&path, &bin_path) {
-                    if e.kind() != ErrorKind::AlreadyExists {
-                        return Err(e.into());
-                    }
-                }
-                set_permissions(&bin_path, Permissions::from_mode(0o755))?;
-            }
-        }
-    }
-
     File::create(&install_marker)?;
 
     log_progress(&format!("Installed {}", dep.id().bright_blue()));
@@ -266,6 +247,30 @@ pub async fn execute_plan(plan: Plan) -> Result<()> {
 
     while let Ok(x) = recv.recv_async().await {
         x.await??;
+    }
+
+    Ok(())
+}
+
+pub async fn setup_bins(plan: &Plan) -> Result<()> {
+    for tree in plan.trees.values() {
+        let dep = &tree.root;
+        for (cmd, path) in &dep.bins {
+            let path = path.to_compact_string();
+            let mut path = PathBuf::from("../").join(&*dep.name).join(&*path);
+            if !exists(PathBuf::from("node_modules/.bin").join(&path))? {
+                path.set_extension("js");
+            }
+            if !cmd.contains('/') {
+                let bin_path = PathBuf::from("node_modules/.bin").join(&**cmd);
+                if let Err(e) = symlink(&path, &bin_path) {
+                    if e.kind() != ErrorKind::AlreadyExists {
+                        return Err(e.into());
+                    }
+                }
+                set_permissions(&bin_path, Permissions::from_mode(0o755))?;
+            }
+        }
     }
 
     Ok(())

@@ -27,7 +27,7 @@ use node_semver::Version;
 use npm::{fetch_package, Dependency};
 use once_cell::sync::Lazy;
 use package::{PackageMetadata, PackageSpecifier};
-use plan::tree_size;
+use plan::{setup_bins, tree_size};
 use progress::{log_progress, log_verbose};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
@@ -248,6 +248,8 @@ async fn install() -> Result<()> {
                 exec_install_scripts(tree, &mut vec![name.clone()]).await?;
             }
         }
+
+        setup_bins(&plan).await?;
 
         write_json("node_modules/.cotton/plan.json", &plan).await?;
     }
