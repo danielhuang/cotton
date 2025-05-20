@@ -1,7 +1,7 @@
 use async_compression::tokio::bufread::GzipDecoder;
 use color_eyre::{
-    eyre::{eyre, Result},
-    Report,
+    eyre::{eyre, Context, Result},
+    Report, Section,
 };
 use compact_str::{CompactString, ToCompactString};
 use futures::{StreamExt, TryStreamExt};
@@ -268,7 +268,17 @@ pub async fn setup_bins(plan: &Plan) -> Result<()> {
                         return Err(e.into());
                     }
                 }
-                set_permissions(&bin_path, Permissions::from_mode(0o755))?;
+                let result = set_permissions(&bin_path, Permissions::from_mode(0o755))
+                    .with_context(|| {
+                        format!("Failed to set permissions for {}", bin_path.display())
+                    });
+                if read_config().await?.allow_install_scripts {
+                    result?;
+                } else {
+                    result.with_note(|| {
+                        format!("Package {} may require install scripts; consider enabling `allow_install_scripts`", dep.id())
+                    })?
+                }
             }
         }
     }
