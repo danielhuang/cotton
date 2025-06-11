@@ -21,7 +21,7 @@ indicatif = "0.17.8"
 itertools = "0.14.0"
 nix = "0.26.2"
 multimap = "0.10.0"
-node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "bf4b103dc88b310c9dc049433aff1a14716e1e68" }
+node-semver = { git = "https://github.com/danielhuang/node-semver-rs", rev = "f401e329c617563e663e25cd31ab597d5ac3afc5" }
 notify = "=8.0.0"
 once_cell = "1.19.0"
 owo-colors = "4.1.0"

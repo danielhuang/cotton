@@ -1199,20 +1199,21 @@ dependencies = [
 
 [[package]]
 name = "miette"
-version = "3.3.0"
+version = "5.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd2adcfcced5d625bf90a958a82ae5b93231f57f3df1383fee28c9b5096d35ed"
+checksum = "07749fb52853e739208049fb513287c6f448de9103dfa78b05ae01f2fc5809bb"
 dependencies = [
  "miette-derive",
  "once_cell",
  "thiserror",
+ "unicode-width 0.1.9",
 ]
 
 [[package]]
 name = "miette-derive"
-version = "3.3.0"
+version = "5.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c01a8b61312d367ce87956bb686731f87e4c6dd5dbc550e8f06e3c24fb1f67f"
+checksum = "2a07ad93a80d1b92bb44cb42d7c49b49c9aab1778befefad49cceb5e4c5bf460"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1281,8 +1282,8 @@ dependencies = [
 
 [[package]]
 name = "node-semver"
-version = "2.0.1-alpha.0"
-source = "git+https://github.com/danielhuang/node-semver-rs?rev=bf4b103dc88b310c9dc049433aff1a14716e1e68#bf4b103dc88b310c9dc049433aff1a14716e1e68"
+version = "2.1.1-alpha.0"
+source = "git+https://github.com/danielhuang/node-semver-rs?rev=f401e329c617563e663e25cd31ab597d5ac3afc5#f401e329c617563e663e25cd31ab597d5ac3afc5"
 dependencies = [
  "bytecount",
  "miette",
