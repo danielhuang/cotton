@@ -48,7 +48,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 toml = "1.0.0"
 tap = "1.0.1"
 url = { version = "2.5.0", features = ["serde"] }
-rand = "0.8.5"
+rand = "0.10.0"
 which = "8.0.0"
 snmalloc-rs = { version = "0.3.6", features = ["build_cc"] }
 
