@@ -50,7 +50,7 @@ tap = "1.0.1"
 url = { version = "2.5.0", features = ["serde"] }
 rand = "0.8.5"
 which = "8.0.0"
-snmalloc-rs = { version = "0.3.6", features = ["build_cc"] }
+snmalloc-rs = { version = "0.7.0", features = ["build_cc"] }
 
 [profile.dev]
 opt-level = 3
